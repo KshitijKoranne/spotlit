@@ -173,8 +173,8 @@ struct OnboardingView: View {
         .padding(.top, 36)
         .padding(.bottom, 24)
         .frame(width: 600, height: 640)
-        .background(RadialGradient(colors: [Color(hex: "#FFB020").opacity(0.16), .clear], center: .top, startRadius: 0, endRadius: 420).ignoresSafeArea())
-        .clipped()
+        .background(RadialGradient(colors: [Color(hex: "#FFB020").opacity(0.16), .clear], center: .top, startRadius: 0, endRadius: 420))
+        .ignoresSafeArea()
     }
 
     private func go(_ s: Int) { withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { step = s } }
@@ -231,6 +231,7 @@ struct OnboardingView: View {
 
     private var basics: some View {
         VStack(spacing: 18) {
+            MascotStage(height: 110)
             Title(text: "A few good basics", sub: "Change these any time from the menu bar.")
             VStack(spacing: 0) {
                 OptionRow(icon: "cursorarrow.click", title: "Show my clicks", sub: "A ring appears on every click.", on: $clicksOn)
