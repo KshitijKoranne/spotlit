@@ -1,0 +1,38 @@
+{
+  "identifier" : "5F2A9C10",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : true,
+      "internalID" : "6760000001",
+      "localizations" : [
+        {
+          "description" : "Unlock every Spotlit PRO feature. One-time purchase.",
+          "displayName" : "Spotlit PRO",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "in.kjrlabs.spotlit.pro",
+      "referenceName" : "Spotlit PRO",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 2,
+    "minor" : 0
+  }
+}

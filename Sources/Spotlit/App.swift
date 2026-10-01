@@ -1,5 +1,4 @@
 import SwiftUI
-import Carbon.HIToolbox
 
 @main
 struct SpotlitApp: App {
@@ -18,43 +17,126 @@ struct SpotlitApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        UserDefaults.standard.register(defaults: [
-            "enabled": true, "haloMode": "always", "shape": "circle", "size": 56.0,
-            "haloStyle": "fill", "haloColor": "#FFB020", "opacity": 0.35,
-            "clicksOn": true, "leftColor": "#FFB020", "rightColor": "#0A84FF",
-            "dimOn": false, "dimAmount": 0.55, "dimSize": 170.0,
-            "keysOn": false, "keysMode": "all", "shake": true, "inRecordings": true,
-        ])
+        UserDefaults.standard.register(defaults: Presets.builtIn["Default"]!.merging([
+            "enabled": true, "preset": "Default", "shake": true, "inRecordings": true, "holdMode": false,
+            "idleDelay": 2.0, "keysPos": "bottom", "keysSize": 24.0, "magShape": "circle",
+            "hk.toggle": "1,6144,⌃⌥S", "hk.next": "35,6144,⌃⌥P", "hk.dim": "2,6144,⌃⌥D",
+            "hk.keys": "40,6144,⌃⌥K", "hk.mag": "6,6144,⌃⌥Z",
+        ]) { a, _ in a })
         NSApp.setActivationPolicy(.accessory)
+        Store.shared.start()
         Overlay.shared.start()
-        HotKey.register {
-            let d = UserDefaults.standard
-            d.set(!d.bool(forKey: "enabled"), forKey: "enabled")
-        }
+        AutoOn.shared.start()
+        HotKeys.reload()
+        Onboarding.showIfNeeded()
     }
 }
 
-// Global ⌃⌥S toggle. Carbon hot keys need no permission.
-enum HotKey {
-    private static var action: (() -> Void)?
-    private static var ref: EventHotKeyRef?
+/// Settings the presets save and restore.
+enum Presets {
+    static let keys = ["haloMode", "shape", "size", "haloStyle", "haloColor", "opacity", "clicksOn", "leftColor",
+                       "rightColor", "clickAnim", "dimOn", "dimAmount", "dimSize", "keysOn", "keysMode",
+                       "magOn", "magZoom", "magSize"]
+    static let builtInNames = ["Default", "Demo", "Teach", "Record"]
+    static let builtIn: [String: [String: Any]] = {
+        let base: [String: Any] = [
+            "haloMode": "always", "shape": "circle", "size": 56.0, "haloStyle": "fill", "haloColor": "#FFB020",
+            "opacity": 0.35, "clicksOn": true, "leftColor": "#FFB020", "rightColor": "#0A84FF", "clickAnim": "ripple",
+            "dimOn": false, "dimAmount": 0.55, "dimSize": 170.0, "keysOn": false, "keysMode": "all",
+            "magOn": false, "magZoom": 2.0, "magSize": 200.0,
+        ]
+        func with(_ c: [String: Any]) -> [String: Any] { base.merging(c) { _, new in new } }
+        return [
+            "Default": base,
+            "Demo": with(["size": 72.0, "haloStyle": "ring", "opacity": 0.6, "dimOn": true]),
+            "Teach": with(["haloMode": "moving", "shape": "squircle", "size": 60.0, "haloColor": "#34C759", "keysOn": true]),
+            "Record": with(["size": 48.0, "haloColor": "#0A84FF", "opacity": 0.3, "keysOn": true, "keysMode": "shortcuts"]),
+        ]
+    }()
 
-    static func register(_ action: @escaping () -> Void) {
-        self.action = action
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
-            HotKey.action?()
-            return noErr
-        }, 1, &spec, nil, nil)
-        RegisterEventHotKey(UInt32(kVK_ANSI_S), UInt32(controlKey | optionKey),
-                            EventHotKeyID(signature: 0x5350_4C54, id: 1),
-                            GetApplicationEventTarget(), 0, &ref)
+    static var custom: [String: [String: Any]] {
+        UserDefaults.standard.dictionary(forKey: "customPresets") as? [String: [String: Any]] ?? [:]
     }
+    static var names: [String] { builtInNames + custom.keys.sorted() }
+    static func values(_ name: String) -> [String: Any]? { builtIn[name] ?? custom[name] }
+
+    /// Applies without a PRO check. Used by Auto-on.
+    static func apply(_ name: String) {
+        guard let v = values(name) else { return }
+        v.forEach { UserDefaults.standard.set($1, forKey: $0) }
+        UserDefaults.standard.set(name, forKey: "preset")
+    }
+
+    /// User choice: PRO presets get a live preview first.
+    static func choose(_ name: String) {
+        guard var v = values(name) else { return }
+        if name == "Default" || Store.shared.isPro { return apply(name) }
+        v["preset"] = name
+        Store.shared.preview("\(name) preset", v)
+    }
+
+    static func next() {
+        let n = names
+        let i = n.firstIndex(of: UserDefaults.standard.string(forKey: "preset") ?? "") ?? -1
+        choose(n[(i + 1) % n.count])
+    }
+
+    static func snapshot(extra: [String] = []) -> [String: Any] {
+        var r: [String: Any] = [:]
+        for k in keys + extra { r[k] = UserDefaults.standard.object(forKey: k) }
+        return r
+    }
+
+    static func save(_ name: String) {
+        var c = custom
+        c[name] = snapshot()
+        UserDefaults.standard.set(c, forKey: "customPresets")
+        UserDefaults.standard.set(name, forKey: "preset")
+    }
+
+    static func delete(_ name: String) {
+        var c = custom
+        c[name] = nil
+        UserDefaults.standard.set(c, forKey: "customPresets")
+        if UserDefaults.standard.string(forKey: "preset") == name { apply("Default") }
+    }
+}
+
+/// Plain AppKit windows so an accessory app can open them from anywhere.
+enum Windows {
+    private static var open: [String: NSWindow] = [:]
+
+    static func show<V: View>(_ id: String, title: String, transparent: Bool = false, _ view: V) {
+        let w = open[id] ?? {
+            let w = NSWindow(contentViewController: NSHostingController(rootView: view))
+            w.title = title
+            w.isReleasedWhenClosed = false
+            if transparent {
+                w.titlebarAppearsTransparent = true
+                w.titleVisibility = .hidden
+                w.styleMask.insert(.fullSizeContentView)
+            }
+            w.center()
+            open[id] = w
+            return w
+        }()
+        NSApp.activate(ignoringOtherApps: true)
+        w.makeKeyAndOrderFront(nil)
+    }
+
+    static func close(_ id: String) { open[id]?.close() }
+    static func settings() { show("settings", title: "Spotlit Settings", SettingsView()) }
+    static func paywall() { show("pro", title: "Spotlit PRO", transparent: true, PaywallView()) }
 }
 
 extension Color {
     init(hex: String) {
         let v = UInt64(hex.dropFirst(), radix: 16) ?? 0xFFB020
         self.init(red: Double(v >> 16 & 255) / 255, green: Double(v >> 8 & 255) / 255, blue: Double(v & 255) / 255)
+    }
+
+    var hex: String {
+        let c = NSColor(self).usingColorSpace(.sRGB) ?? .orange
+        return String(format: "#%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
     }
 }

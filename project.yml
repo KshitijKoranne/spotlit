@@ -1,0 +1,44 @@
+name: Spotlit
+options:
+  bundleIdPrefix: in.kjrlabs
+  deploymentTarget:
+    macOS: "13.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Spotlit:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/Spotlit
+      - path: Spotlit.storekit
+        buildPhase: none
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: Spotlit
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.utilities
+        NSHumanReadableCopyright: "© 2026 Kshitij Koranne"
+    entitlements:
+      path: Sources/Spotlit.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: in.kjrlabs.spotlit
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+schemes:
+  Spotlit:
+    build:
+      targets:
+        Spotlit: all
+    run:
+      config: Debug
+      storeKitConfiguration: Spotlit.storekit
+    archive:
+      config: Release

@@ -1,5 +1,7 @@
 import SwiftUI
 import AppKit
+import ScreenCaptureKit
+import CoreImage
 
 struct Ripple: Identifiable {
     let id = UUID()
@@ -7,47 +9,38 @@ struct Ripple: Identifiable {
     let right: Bool
 }
 
-/// Watches the mouse and keyboard. Mouse monitors need no permission; keys need Accessibility.
+/// Watches the mouse (no permission needed) and keys (via KeyTap).
 final class Tracker: ObservableObject {
     @Published var point = NSEvent.mouseLocation
     @Published var moving = false
     @Published var idle = false
     @Published var clickFlash = false
     @Published var shaking = false
+    @Published var holding = false
     @Published var ripples: [Ripple] = []
     @Published var keys: [String] = []
 
     private var monitors: [Any] = []
-    private var keyMonitor: Any?
-    private var keyMonitorTrusted = false
     private var moveStop, idleStart, flashEnd, keysEnd: DispatchWorkItem?
     private var lastX: CGFloat = 0, lastDir: CGFloat = 0, turns: [Date] = []
     private var lastKeyPlain = false, lastKeyTime = Date.distantPast
+    private var holdTimer: Timer?
 
     func start() {
         watch([.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]) { [weak self] _ in self?.moved() }
         watch([.leftMouseDown, .rightMouseDown]) { [weak self] e in self?.clicked(right: e.type == .rightMouseDown) }
-        updateKeyMonitor()
+        KeyTap.shared.onKey = { [weak self] in self?.key($0) }
+        // Hold-key mode reads ⌥ state without any permission.
+        holdTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            guard let self, UserDefaults.standard.bool(forKey: "holdMode") else { return }
+            let h = NSEvent.modifierFlags.contains(.option)
+            if h != self.holding { self.holding = h }
+        }
     }
 
     private func watch(_ mask: NSEvent.EventTypeMask, _ handler: @escaping (NSEvent) -> Void) {
         if let g = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handler) { monitors.append(g) }
         if let l = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { handler($0); return $0 }) { monitors.append(l) }
-    }
-
-    /// Adds or removes the key monitor. Re-adds it once Accessibility is granted.
-    func updateKeyMonitor() {
-        let on = UserDefaults.standard.bool(forKey: "keysOn")
-        let trusted = AXIsProcessTrusted()
-        if let m = keyMonitor, !on || (trusted && !keyMonitorTrusted) {
-            NSEvent.removeMonitor(m)
-            keyMonitor = nil
-            keys = []
-        }
-        if on, keyMonitor == nil {
-            keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] in self?.key($0) }
-            keyMonitorTrusted = trusted
-        }
     }
 
     @discardableResult
@@ -63,7 +56,7 @@ final class Tracker: ObservableObject {
         if idle { idle = false }
         moveStop?.cancel(); idleStart?.cancel()
         moveStop = after(0.5) { [weak self] in self?.moving = false }
-        idleStart = after(2) { [weak self] in self?.idle = true }
+        idleStart = after(max(0.5, UserDefaults.standard.double(forKey: "idleDelay"))) { [weak self] in self?.idle = true }
         detectShake(point.x)
     }
 
@@ -93,7 +86,7 @@ final class Tracker: ObservableObject {
         guard UserDefaults.standard.bool(forKey: "clicksOn") else { return }
         let r = Ripple(point: point, right: right)
         ripples.append(r)
-        after(0.7) { [weak self] in self?.ripples.removeAll { $0.id == r.id } }
+        after(0.9) { [weak self] in self?.ripples.removeAll { $0.id == r.id } }
     }
 
     private func key(_ e: NSEvent) {
@@ -123,10 +116,69 @@ final class Tracker: ObservableObject {
     }
 }
 
+/// Live screen image for the magnifier. Needs Screen Recording permission.
+final class Magnifier: NSObject, ObservableObject, SCStreamOutput {
+    @Published var image: CGImage?
+    private var stream: SCStream?
+    private var screenFrame: CGRect = .zero
+    private var scale: CGFloat = 2
+    private var starting = false
+    private let ctx = CIContext(options: [.cacheIntermediates: false])
+
+    func start() {
+        guard stream == nil, !starting else { return }
+        starting = true
+        Task {
+            defer { starting = false }
+            do {
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                let mouse = NSEvent.mouseLocation
+                guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main,
+                      let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+                      let display = content.displays.first(where: { $0.displayID == id }) else { return }
+                let mine = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+                let cfg = SCStreamConfiguration()
+                cfg.width = Int(screen.frame.width * screen.backingScaleFactor)
+                cfg.height = Int(screen.frame.height * screen.backingScaleFactor)
+                cfg.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+                cfg.showsCursor = false
+                cfg.queueDepth = 3
+                let s = SCStream(filter: SCContentFilter(display: display, excludingApplications: mine, exceptingWindows: []),
+                                 configuration: cfg, delegate: nil)
+                try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: .main)
+                try await s.startCapture()
+                screenFrame = screen.frame
+                scale = screen.backingScaleFactor
+                stream = s
+            } catch {
+                NSLog("Spotlit magnifier: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func stop() {
+        stream?.stopCapture()
+        stream = nil
+        image = nil
+    }
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard type == .screen, let pb = buffer.imageBuffer else { return }
+        let m = NSEvent.mouseLocation
+        guard screenFrame.contains(m) else { stop(); start(); return } // pointer went to another screen
+        let d = UserDefaults.standard
+        let side = d.double(forKey: "magSize") / max(1, d.double(forKey: "magZoom"))
+        let rect = CGRect(x: (m.x - screenFrame.minX - side / 2) * scale, y: (m.y - screenFrame.minY - side / 2) * scale,
+                          width: side * scale, height: side * scale)
+        image = ctx.createCGImage(CIImage(cvPixelBuffer: pb), from: rect)
+    }
+}
+
 /// One clear, click-through window per screen, above everything.
 final class Overlay {
     static let shared = Overlay()
     let tracker = Tracker()
+    let magnifier = Magnifier()
     private var windows: [NSWindow] = []
 
     func start() {
@@ -135,7 +187,8 @@ final class Overlay {
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in self?.rebuild() }
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,
-                                               object: nil, queue: .main) { [weak self] _ in self?.applySharing() }
+                                               object: nil, queue: .main) { [weak self] _ in self?.sync() }
+        sync()
     }
 
     private func rebuild() {
@@ -149,7 +202,7 @@ final class Overlay {
             w.ignoresMouseEvents = true
             w.level = .screenSaver
             w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-            let host = NSHostingView(rootView: OverlayView(frame: screen.frame, t: tracker))
+            let host = NSHostingView(rootView: OverlayView(frame: screen.frame, t: tracker, mag: magnifier, store: .shared))
             host.sizingOptions = []
             host.frame = CGRect(origin: .zero, size: screen.frame.size)
             w.contentView = host
@@ -157,12 +210,35 @@ final class Overlay {
             w.orderFrontRegardless()
             return w
         }
-        applySharing()
+        sync()
     }
 
-    private func applySharing() {
-        let show = UserDefaults.standard.bool(forKey: "inRecordings")
-        windows.forEach { $0.sharingType = show ? .readOnly : .none }
+    /// Matches running services to settings. Called on every settings change; each step is cheap.
+    private func sync() {
+        let d = UserDefaults.standard
+        let on = d.bool(forKey: "enabled")
+        windows.forEach { $0.sharingType = d.bool(forKey: "inRecordings") ? .readOnly : .none }
+        on && d.bool(forKey: "keysOn") ? KeyTap.shared.start() : KeyTap.shared.stop()
+        on && d.bool(forKey: "magOn") ? magnifier.start() : magnifier.stop()
+    }
+}
+
+/// Solid hex colors, or PRO gradients stored as "g:name".
+enum Paint {
+    static let free = ["#FFB020", "#FF453A", "#FF2D92", "#34C759", "#0A84FF", "#BF5AF2", "#FFFFFF"]
+    static let pro = ["g:sunset", "g:aurora", "g:ocean", "g:candy", "g:prism"]
+    static let gradients: [String: [Color]] = [
+        "sunset": [Color(hex: "#FFB020"), Color(hex: "#FF5E62"), Color(hex: "#FF2D92")],
+        "aurora": [Color(hex: "#7CF7D4"), Color(hex: "#5AA9FF"), Color(hex: "#B57CFF")],
+        "ocean": [Color(hex: "#00C6FB"), Color(hex: "#005BEA")],
+        "candy": [Color(hex: "#FF9CEE"), Color(hex: "#9CF0FF")],
+        "prism": [.red, .orange, .yellow, .green, .blue, .purple],
+    ]
+    static func colors(_ s: String) -> [Color] { gradients[String(s.dropFirst(2))] ?? [Color(hex: s)] }
+    static func base(_ s: String) -> Color { colors(s)[0] }
+    static func style(_ s: String, _ opacity: Double = 1) -> AnyShapeStyle {
+        let c = colors(s).map { $0.opacity(opacity) }
+        return c.count == 1 ? AnyShapeStyle(c[0]) : AnyShapeStyle(AngularGradient(colors: c + [c[0]], center: .center))
     }
 }
 
@@ -186,9 +262,23 @@ struct HaloShape: Shape {
     }
 }
 
+/// The halo itself. Also used for previews in Settings and onboarding.
+struct HaloView: View {
+    let shape: String, size: Double, style: String, color: String, opacity: Double
+    var body: some View {
+        HaloShape(kind: shape)
+            .fill(style == "fill" ? Paint.style(color, opacity) : AnyShapeStyle(Color.clear))
+            .overlay(HaloShape(kind: shape).stroke(Paint.style(color, min(1, opacity + 0.5)), lineWidth: style == "fill" ? 1.5 : 3))
+            .shadow(color: Paint.base(color).opacity(0.35), radius: 10)
+            .frame(width: size, height: size)
+    }
+}
+
 struct OverlayView: View {
     let frame: CGRect
     @ObservedObject var t: Tracker
+    @ObservedObject var mag: Magnifier
+    @ObservedObject var store: Store
     @AppStorage("enabled") private var enabled = true
     @AppStorage("haloMode") private var mode = "always"
     @AppStorage("shape") private var shape = "circle"
@@ -198,17 +288,25 @@ struct OverlayView: View {
     @AppStorage("opacity") private var opacity = 0.35
     @AppStorage("leftColor") private var leftColor = "#FFB020"
     @AppStorage("rightColor") private var rightColor = "#0A84FF"
+    @AppStorage("clickAnim") private var clickAnim = "ripple"
     @AppStorage("dimOn") private var dimOn = false
     @AppStorage("dimAmount") private var dimAmount = 0.55
     @AppStorage("dimSize") private var dimSize = 170.0
     @AppStorage("keysOn") private var keysOn = false
+    @AppStorage("keysPos") private var keysPos = "bottom"
+    @AppStorage("keysSize") private var keysSize = 24.0
+    @AppStorage("magOn") private var magOn = false
+    @AppStorage("magSize") private var magSize = 200.0
+    @AppStorage("magShape") private var magShape = "circle"
+    @AppStorage("holdMode") private var holdMode = false
 
     private func local(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x - frame.minX, y: frame.maxY - p.y) }
     private var here: Bool { frame.insetBy(dx: -1, dy: -1).contains(t.point) }
+    private var active: Bool { enabled && here && (!holdMode || t.holding) }
 
     private var haloOn: Bool {
-        guard enabled, here else { return false }
-        if t.shaking { return true }
+        if enabled && here && t.shaking { return true }
+        guard active else { return false }
         switch mode {
         case "moving": return t.moving
         case "click": return t.clickFlash
@@ -220,32 +318,49 @@ struct OverlayView: View {
 
     var body: some View {
         let p = local(t.point)
-        let c = Color(hex: color)
         ZStack {
-            if enabled && dimOn {
+            if enabled && dimOn && (!holdMode || t.holding) {
                 Rectangle().fill(RadialGradient(
                     stops: [.init(color: .clear, location: 0), .init(color: .clear, location: 0.6),
                             .init(color: .black.opacity(dimAmount), location: 1)],
                     center: UnitPoint(x: p.x / frame.width, y: p.y / frame.height),
                     startRadius: 0, endRadius: dimSize))
             }
+            if active && magOn, let img = mag.image {
+                let lens = magShape == "circle" ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                Image(decorative: img, scale: 1)
+                    .resizable()
+                    .interpolation(.medium)
+                    .frame(width: magSize, height: magSize)
+                    .clipShape(lens)
+                    .overlay(lens.stroke(.white.opacity(0.85), lineWidth: 1.5))
+                    .shadow(color: .black.opacity(0.35), radius: 16, y: 8)
+                    .position(p)
+            }
             if enabled {
                 ForEach(t.ripples.filter { frame.contains($0.point) }) { r in
-                    RippleView(color: Color(hex: r.right ? rightColor : leftColor)).position(local(r.point))
+                    ClickView(paint: r.right ? rightColor : leftColor, style: clickAnim).position(local(r.point))
                 }
             }
-            HaloShape(kind: shape)
-                .fill(style == "fill" ? c.opacity(opacity) : .clear)
-                .overlay(HaloShape(kind: shape).stroke(c.opacity(min(1, opacity + 0.5)), lineWidth: style == "fill" ? 1.5 : 3))
-                .shadow(color: c.opacity(0.35), radius: 10)
-                .frame(width: size, height: size)
+            HaloView(shape: shape, size: size, style: style, color: color, opacity: opacity)
                 .scaleEffect(t.shaking ? 2.4 : 1)
                 .animation(.spring(response: 0.35, dampingFraction: 0.7), value: t.shaking)
                 .opacity(haloOn ? 1 : 0)
                 .animation(.easeOut(duration: 0.18), value: haloOn)
                 .position(p)
             if enabled && keysOn && here && !t.keys.isEmpty {
-                KeysView(keys: t.keys).position(x: frame.width / 2, y: frame.height - 150)
+                KeysView(keys: t.keys, size: keysSize)
+                    .position(x: frame.width / 2, y: keysPos == "top" ? 120 : keysPos == "center" ? frame.height / 2 : frame.height - 150)
+            }
+            if here, let label = store.previewing {
+                HStack(spacing: 8) {
+                    ProBadge()
+                    Text("Previewing \(label)").font(.system(size: 13, weight: .medium))
+                }
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(.regularMaterial, in: Capsule())
+                .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+                .position(x: frame.width / 2, y: 64)
             }
         }
         .frame(width: frame.width, height: frame.height)
@@ -253,33 +368,97 @@ struct OverlayView: View {
     }
 }
 
-struct RippleView: View {
-    let color: Color
+/// Click feedback: ripple (free), pulse, shrink and glitter (PRO).
+struct ClickView: View {
+    let paint: String
+    let style: String
     @State private var go = false
+    private static let sparks = (0..<14).map { i in (angle: Double(i) / 14 * 2 * .pi + .random(in: -0.2...0.2), dist: Double.random(in: 34...62), size: Double.random(in: 7...13)) }
+
     var body: some View {
-        Circle()
-            .stroke(color, lineWidth: 3)
-            .frame(width: 44, height: 44)
-            .scaleEffect(go ? 1.6 : 0.3)
-            .opacity(go ? 0 : 1)
-            .onAppear { withAnimation(.easeOut(duration: 0.6)) { go = true } }
+        ZStack {
+            if style == "glitter" {
+                ForEach(0..<Self.sparks.count, id: \.self) { i in
+                    let s = Self.sparks[i]
+                    Image(systemName: "sparkle")
+                        .font(.system(size: s.size, weight: .bold))
+                        .foregroundStyle(Paint.colors(paint)[i % Paint.colors(paint).count])
+                        .offset(x: go ? cos(s.angle) * s.dist : 0, y: go ? sin(s.angle) * s.dist : 0)
+                        .scaleEffect(go ? 0.4 : 1.2)
+                        .rotationEffect(.degrees(go ? 180 : 0))
+                }
+                .opacity(go ? 0 : 1)
+            } else {
+                Circle()
+                    .stroke(Paint.style(paint), lineWidth: 3)
+                    .frame(width: 44, height: 44)
+                    .scaleEffect(go ? end : start)
+                    .opacity(go ? 0 : 1)
+            }
+        }
+        .onAppear { withAnimation(.easeOut(duration: style == "glitter" ? 0.8 : 0.6)) { go = true } }
     }
+
+    private var start: CGFloat { style == "shrink" ? 1.9 : style == "pulse" ? 0.7 : 0.3 }
+    private var end: CGFloat { style == "shrink" ? 0.3 : style == "pulse" ? 1.2 : 1.6 }
 }
 
 struct KeysView: View {
     let keys: [String]
+    var size: Double = 24
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: size / 4) {
             ForEach(Array(keys.enumerated()), id: \.offset) { _, k in
                 Text(k)
-                    .font(.system(size: 24, weight: .medium, design: .rounded))
+                    .font(.system(size: size, weight: .medium, design: .rounded))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .frame(minWidth: 48, minHeight: 48)
-                    .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.15)))
+                    .padding(.horizontal, size * 0.58)
+                    .frame(minWidth: size * 2, minHeight: size * 2)
+                    .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: size / 2, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: size / 2, style: .continuous).strokeBorder(.white.opacity(0.15)))
             }
         }
         .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
+    }
+}
+
+// MARK: Auto-on per app
+
+struct AppRule: Codable, Identifiable, Hashable {
+    var id: String { bundle }
+    let bundle: String
+    let name: String
+    var preset: String
+    var showInRecordings: Bool
+}
+
+/// Turns Spotlit on with a preset while a chosen app is in front. PRO.
+final class AutoOn: ObservableObject {
+    static let shared = AutoOn()
+    @Published var rules: [AppRule] = (try? JSONDecoder().decode([AppRule].self, from: UserDefaults.standard.data(forKey: "appRules") ?? Data())) ?? [] {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(rules), forKey: "appRules") }
+    }
+    private var saved: [String: Any]?
+
+    func start() {
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+                                                          object: nil, queue: .main) { [weak self] n in
+            let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            self?.activated(app?.bundleIdentifier)
+        }
+    }
+
+    private func activated(_ id: String?) {
+        guard id != Bundle.main.bundleIdentifier else { return }
+        let d = UserDefaults.standard
+        if Store.shared.isPro, let rule = rules.first(where: { $0.bundle == id }) {
+            if saved == nil { saved = Presets.snapshot(extra: ["enabled", "inRecordings", "preset"]) }
+            d.set(true, forKey: "enabled")
+            Presets.apply(rule.preset)
+            d.set(rule.showInRecordings, forKey: "inRecordings")
+        } else if let s = saved {
+            s.forEach { d.set($1, forKey: $0) }
+            saved = nil
+        }
     }
 }

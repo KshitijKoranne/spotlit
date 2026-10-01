@@ -1,14 +1,12 @@
 #!/bin/sh
-# Builds Spotlit.app into ./build and opens it.
+# Generates the Xcode project, builds a local test copy (ad-hoc signed) and opens it.
+# For the App Store and for testing purchases: open Spotlit.xcodeproj in Xcode and press ⌘R.
 set -e
 cd "$(dirname "$0")"
-swift build -c release
-APP=build/Spotlit.app
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
-cp .build/release/Spotlit "$APP/Contents/MacOS/"
-cp Info.plist "$APP/Contents/"
-codesign --force --sign - "$APP"
+xcodegen generate --quiet
+xcodebuild -project Spotlit.xcodeproj -scheme Spotlit -configuration Debug -derivedDataPath .build \
+  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -quiet build
 pkill -x Spotlit || true
-open "$APP"
+rm -rf build && mkdir build && cp -R .build/Build/Products/Debug/Spotlit.app build/
+open build/Spotlit.app
 echo "Spotlit is running. Look for the icon in the menu bar."

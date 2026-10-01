@@ -1,61 +1,56 @@
 import SwiftUI
-import ServiceManagement
 
 struct MenuView: View {
+    @ObservedObject private var store = Store.shared
     @AppStorage("enabled") private var enabled = true
+    @AppStorage("preset") private var preset = "Default"
     @AppStorage("haloMode") private var mode = "always"
     @AppStorage("shape") private var shape = "circle"
     @AppStorage("size") private var size = 56.0
     @AppStorage("haloStyle") private var style = "fill"
     @AppStorage("haloColor") private var color = "#FFB020"
-    @AppStorage("opacity") private var opacity = 0.35
     @AppStorage("clicksOn") private var clicksOn = true
-    @AppStorage("leftColor") private var leftColor = "#FFB020"
-    @AppStorage("rightColor") private var rightColor = "#0A84FF"
+    @AppStorage("clickAnim") private var clickAnim = "ripple"
     @AppStorage("dimOn") private var dimOn = false
     @AppStorage("dimAmount") private var dimAmount = 0.55
     @AppStorage("dimSize") private var dimSize = 170.0
     @AppStorage("keysOn") private var keysOn = false
     @AppStorage("keysMode") private var keysMode = "all"
-    @AppStorage("shake") private var shake = true
-    @AppStorage("inRecordings") private var inRecordings = true
-    @State private var loginOn = SMAppService.mainApp.status == .enabled
-    @State private var trusted = AXIsProcessTrusted()
+    @AppStorage("magOn") private var magOn = false
+    @AppStorage("magZoom") private var magZoom = 2.0
+    @AppStorage("magSize") private var magSize = 200.0
 
     var body: some View {
         VStack(spacing: 12) {
             header
             HStack(alignment: .top, spacing: 12) {
                 VStack(spacing: 12) { haloCard; clicksCard }
-                VStack(spacing: 12) { dimCard; keysCard; generalCard }
+                VStack(spacing: 12) { dimCard; keysCard; magCard }
             }
-            HStack {
-                Text("⌃⌥S turns Spotlit on or off").font(.system(size: 11)).foregroundStyle(.secondary)
-                Spacer()
-                Button("Quit Spotlit") { NSApp.terminate(nil) }.keyboardShortcut("q").controlSize(.small)
-            }
+            footer
         }
         .padding(14)
-        .frame(width: 560)
-        .onAppear {
-            trusted = AXIsProcessTrusted()
-            Overlay.shared.tracker.updateKeyMonitor()
-        }
+        .frame(width: 580)
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: "cursorarrow.rays")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
-                .background(LinearGradient(colors: [Color(hex: "#FFC94A"), Color(hex: "#FF9500")], startPoint: .top, endPoint: .bottom),
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            AppMark(size: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Spotlit").font(.system(size: 14, weight: .semibold))
-                Text(enabled ? "On" : "Off").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(store.previewing.map { "Previewing \($0)" } ?? (enabled ? "On · \(HotKeys.label("toggle"))" : "Off"))
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
+            Picker("Preset", selection: Binding(get: { preset }, set: { Presets.choose($0) })) {
+                ForEach(Presets.names, id: \.self) { Text($0).tag($0) }
+            }
+            .labelsHidden()
+            .frame(width: 110)
+            .help("Preset")
+            Button { Windows.settings() } label: { Image(systemName: "gearshape") }
+                .buttonStyle(.borderless)
+                .help("Settings")
             Toggle("Spotlit", isOn: $enabled).toggleStyle(.switch).labelsHidden()
         }
     }
@@ -80,61 +75,79 @@ struct MenuView: View {
                 Slider(value: $size, in: 20...160)
                 Text("\(Int(size))").monospacedDigit().foregroundStyle(.secondary).frame(width: 26, alignment: .trailing)
             }
-            Row(title: "Opacity") { Slider(value: $opacity, in: 0.1...0.9) }
             Row(title: "Style") {
                 Picker("Style", selection: $style) {
                     Text("Fill").tag("fill")
                     Text("Ring").tag("ring")
                 }.pickerStyle(.segmented).labelsHidden()
             }
-            Row(title: "Color") { Swatches(hex: $color) }
+            Swatches(key: "haloColor", hex: color)
         }
     }
 
     private var clicksCard: some View {
         Card(title: "Clicks", icon: "cursorarrow.click", isOn: $clicksOn) {
-            Row(title: "Left") { Swatches(hex: $leftColor) }
-            Row(title: "Right") { Swatches(hex: $rightColor) }
+            Row(title: "Effect") { ClickEffectPicker(value: clickAnim) }
         }
     }
 
     private var dimCard: some View {
-        Card(title: "Spotlight Dim", icon: "circle.lefthalf.filled", isOn: $dimOn) {
+        Card(title: "Spotlight Dim", icon: "circle.lefthalf.filled", isOn: proBinding("dimOn", "Spotlight Dim"), pro: true) {
             Row(title: "Amount") { Slider(value: $dimAmount, in: 0.2...0.85) }
             Row(title: "Size") { Slider(value: $dimSize, in: 80...400) }
         }
     }
 
     private var keysCard: some View {
-        Card(title: "Keystrokes", icon: "keyboard", isOn: Binding(get: { keysOn }, set: { on in
-            keysOn = on
-            if on && !AXIsProcessTrusted() {
-                AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
-            }
-            Overlay.shared.tracker.updateKeyMonitor()
-        })) {
+        Card(title: "Keystrokes", icon: "keyboard", isOn: proBinding("keysOn", "Keystrokes"), pro: true) {
             Picker("Keys", selection: $keysMode) {
                 Text("All keys").tag("all")
                 Text("Shortcuts only").tag("shortcuts")
             }.pickerStyle(.segmented).labelsHidden()
-            if keysOn && !trusted {
-                Text("Allow Spotlit in System Settings › Privacy & Security › Accessibility, then open this menu again.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if keysOn && !KeyTap.shared.allowed {
+                Button("Allow Input Monitoring…") { KeyTap.shared.request() }
+                    .controlSize(.small)
             }
         }
     }
 
-    private var generalCard: some View {
-        Card(title: "General", icon: "gearshape") {
-            Toggle("Shake to find pointer", isOn: $shake)
-            Toggle("Show in screenshots and recordings", isOn: $inRecordings)
-            Toggle("Launch at login", isOn: Binding(get: { loginOn }, set: { on in
-                try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
-                loginOn = SMAppService.mainApp.status == .enabled
-            }))
+    private var magCard: some View {
+        Card(title: "Magnifier", icon: "plus.magnifyingglass", isOn: proBinding("magOn", "Magnifier"), pro: true) {
+            Row(title: "Zoom") {
+                Slider(value: $magZoom, in: 1.5...6, step: 0.5)
+                Text(String(format: "%.1f×", magZoom)).monospacedDigit().foregroundStyle(.secondary).frame(width: 34, alignment: .trailing)
+            }
+            Row(title: "Lens") { Slider(value: $magSize, in: 120...360) }
         }
-        .toggleStyle(.checkbox)
-        .font(.system(size: 12))
+    }
+
+    private var footer: some View {
+        HStack {
+            if !store.isPro {
+                Button { Windows.paywall() } label: {
+                    Label("Unlock PRO · \(store.price)", systemImage: "sparkles")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(hex: "#F5A000"))
+                .controlSize(.small)
+            }
+            Spacer()
+            Button("Settings…") { Windows.settings() }.controlSize(.small).keyboardShortcut(",")
+            Button("Quit") { NSApp.terminate(nil) }.controlSize(.small).keyboardShortcut("q")
+        }
+    }
+}
+
+/// Small app mark used in the menu and windows.
+struct AppMark: View {
+    var size: CGFloat
+    var body: some View {
+        Image(systemName: "cursorarrow.rays")
+            .font(.system(size: size * 0.5, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(LinearGradient(colors: [Color(hex: "#FFC94A"), Color(hex: "#FF9500")], startPoint: .top, endPoint: .bottom),
+                        in: RoundedRectangle(cornerRadius: size * 0.27, style: .continuous))
     }
 }
 
@@ -142,13 +155,16 @@ struct Card<Content: View>: View {
     let title: String
     let icon: String
     var isOn: Binding<Bool>? = nil
+    var pro = false
     @ViewBuilder let content: Content
+    @ObservedObject private var store = Store.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: icon).foregroundStyle(.secondary).frame(width: 16)
                 Text(title).font(.system(size: 12, weight: .semibold))
+                if pro && !store.isPro { ProBadge() }
                 Spacer()
                 if let isOn {
                     Toggle(title, isOn: isOn).toggleStyle(.switch).controlSize(.mini).labelsHidden()
@@ -178,23 +194,48 @@ struct Row<Content: View>: View {
     }
 }
 
-// ponytail: fixed swatches, no color panel. The menu window closes when NSColorPanel takes focus.
+/// Free colors, then PRO gradients. Choosing a gradient without PRO starts a preview.
+// ponytail: no NSColorPanel in the menu; the menu window closes when the panel takes focus.
 struct Swatches: View {
-    @Binding var hex: String
-    private let colors = ["#FFB020", "#FF453A", "#FF2D92", "#34C759", "#0A84FF", "#BF5AF2", "#FFFFFF"]
+    let key: String
+    let hex: String
+    @ObservedObject private var store = Store.shared
 
     var body: some View {
         HStack(spacing: 5) {
-            ForEach(colors, id: \.self) { c in
-                Button { hex = c } label: {
+            ForEach(Paint.free + Paint.pro, id: \.self) { c in
+                Button {
+                    c.hasPrefix("g:") ? store.preview("Exclusive colors", [key: c]) : UserDefaults.standard.set(c, forKey: key)
+                } label: {
                     Circle()
-                        .fill(Color(hex: c))
+                        .fill(Paint.style(c))
                         .frame(width: 15, height: 15)
                         .overlay(Circle().strokeBorder(Color.primary.opacity(hex == c ? 0.85 : 0.15), lineWidth: hex == c ? 2 : 1))
+                        .overlay(alignment: .topTrailing) {
+                            if c.hasPrefix("g:") && !store.isPro {
+                                Image(systemName: "lock.fill").font(.system(size: 6)).foregroundStyle(.white)
+                                    .padding(1.5).background(Color.black.opacity(0.55), in: Circle()).offset(x: 3, y: -3)
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(c)
+                .help(c.hasPrefix("g:") ? "PRO color" : c)
             }
         }
+    }
+}
+
+struct ClickEffectPicker: View {
+    let value: String
+    var body: some View {
+        Picker("Effect", selection: Binding(get: { value }, set: { v in
+            v == "ripple" ? UserDefaults.standard.set(v, forKey: "clickAnim") : Store.shared.preview("click effects", ["clickAnim": v])
+        })) {
+            Text("Ripple").tag("ripple")
+            Text("Pulse ✦").tag("pulse")
+            Text("Shrink ✦").tag("shrink")
+            Text("Glitter ✦").tag("glitter")
+        }
+        .labelsHidden()
     }
 }
