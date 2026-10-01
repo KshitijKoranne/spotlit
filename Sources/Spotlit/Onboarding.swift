@@ -173,7 +173,7 @@ struct OnboardingView: View {
         .padding(.top, 36)
         .padding(.bottom, 24)
         .frame(width: 600, height: 640)
-        .background(RadialGradient(colors: [Color(hex: "#FFB020").opacity(0.16), .clear], center: .top, startRadius: 0, endRadius: 420))
+        .background(RadialGradient(colors: [Color(hex: "#FFB020").opacity(0.16), .clear], center: .top, startRadius: 0, endRadius: 420).ignoresSafeArea())
         .clipped()
     }
 

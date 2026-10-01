@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AutoOn.shared.start()
         HotKeys.reload()
         Onboarding.showIfNeeded()
+        if UserDefaults.standard.bool(forKey: "openSettings") { Windows.settings() } // launch arg for screenshots
     }
 }
 
@@ -115,6 +116,7 @@ enum Windows {
                 w.titlebarAppearsTransparent = true
                 w.titleVisibility = .hidden
                 w.styleMask.insert(.fullSizeContentView)
+                w.titlebarSeparatorStyle = .none
             }
             w.center()
             open[id] = w
