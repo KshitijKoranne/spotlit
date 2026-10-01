@@ -4,25 +4,19 @@ import ServiceManagement
 
 // MARK: Mascot
 
-/// The fluffy mascot. Plays Mascot.mp4 in a loop if bundled, else shows Mascot.png with a gentle bob.
+/// The fluffy mascot. Plays Mascot.mp4 in a loop if bundled, else shows the still with a gentle bob.
+/// The art has its own warm background, so it fills the card it sits in.
 struct Mascot: View {
-    var size: CGFloat = 200
     @State private var bob = false
 
     var body: some View {
-        Group {
-            if Bundle.main.url(forResource: "Mascot", withExtension: "mp4") != nil {
-                LoopingVideo(name: "Mascot")
-            } else if let img = NSImage(named: "Mascot") {
-                Image(nsImage: img).resizable().scaledToFit()
-                    .offset(y: bob ? -6 : 4)
-                    .scaleEffect(x: bob ? 0.98 : 1.02, y: bob ? 1.03 : 0.97, anchor: .bottom)
-                    .onAppear { withAnimation(.easeInOut(duration: 1.4).repeatForever()) { bob = true } }
-            } else {
-                AppMark(size: size * 0.5)
-            }
+        if Bundle.main.url(forResource: "Mascot", withExtension: "mp4") != nil {
+            LoopingVideo(name: "Mascot")
+        } else {
+            Image("Mascot").resizable().scaledToFill()
+                .scaleEffect(bob ? 1.03 : 1, anchor: .bottom)
+                .onAppear { withAnimation(.easeInOut(duration: 1.6).repeatForever()) { bob = true } }
         }
-        .frame(width: size, height: size)
     }
 }
 
@@ -38,7 +32,7 @@ struct LoopingVideo: NSViewRepresentable {
         player.isMuted = true
         context.coordinator.looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
         let layer = AVPlayerLayer(player: player)
-        layer.videoGravity = .resizeAspect
+        layer.videoGravity = .resizeAspectFill
         view.layer = layer
         view.wantsLayer = true
         player.play()
@@ -48,15 +42,16 @@ struct LoopingVideo: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
-/// Warm card behind the mascot. Matches the mascot art background.
-struct MascotStage<Content: View>: View {
+/// Square card that holds the mascot art, so it never crops.
+struct MascotStage: View {
     var height: CGFloat = 230
-    @ViewBuilder let content: Content
     var body: some View {
-        ZStack { content }
-            .frame(maxWidth: .infinity)
-            .frame(height: height)
-            .background(Color(hex: "#FFF3DF"), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        Color(hex: "#F8E8BA")
+            .overlay(Mascot())
+            .frame(width: height, height: height)
+            .clipShape(RoundedRectangle(cornerRadius: height * 0.12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: height * 0.12, style: .continuous).strokeBorder(.black.opacity(0.06)))
+            .shadow(color: Color(hex: "#B07A10").opacity(0.18), radius: 18, y: 8)
     }
 }
 
@@ -69,7 +64,7 @@ struct PaywallView: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            MascotStage(height: inOnboarding ? 170 : 190) { Mascot(size: inOnboarding ? 160 : 180) }
+            MascotStage(height: inOnboarding ? 170 : 190)
             VStack(spacing: 6) {
                 Text(store.isPro ? "You have PRO. Thank you!" : "Unlock Spotlit PRO")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
@@ -197,7 +192,7 @@ struct OnboardingView: View {
 
     private var welcome: some View {
         VStack(spacing: 22) {
-            MascotStage(height: 320) { Mascot(size: 300) }
+            MascotStage(height: 300)
             VStack(spacing: 8) {
                 Text("Hi, I'm Spotlit!").font(.system(size: 30, weight: .bold, design: .rounded))
                 Text("I keep your pointer easy to see on calls, in demos and in every screen recording.")
@@ -257,7 +252,7 @@ struct OnboardingView: View {
 
     private var done: some View {
         VStack(spacing: 22) {
-            MascotStage(height: 300) { Mascot(size: 280) }
+            MascotStage(height: 280)
             VStack(spacing: 8) {
                 Text("You're all set").font(.system(size: 30, weight: .bold, design: .rounded))
                 Text("Find me in the menu bar at the top of your screen. Click the pointer icon to change anything.")
