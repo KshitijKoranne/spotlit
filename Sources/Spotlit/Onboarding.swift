@@ -79,7 +79,7 @@ struct PaywallView: View {
             ProFeatureList().padding(.horizontal, 6)
             VStack(spacing: 10) {
                 Button {
-                    store.isPro ? onDone() : Task { await store.buy() }
+                    if store.isPro { onDone() } else { Task { await store.buy() } }
                 } label: {
                     HStack(spacing: 8) {
                         if store.busy { ProgressView().controlSize(.small) }
