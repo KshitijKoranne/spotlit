@@ -63,8 +63,8 @@ struct PaywallView: View {
     @ObservedObject private var store = Store.shared
 
     var body: some View {
-        VStack(spacing: 18) {
-            MascotStage(height: inOnboarding ? 170 : 190)
+        VStack(spacing: inOnboarding ? 14 : 18) {
+            MascotStage(height: inOnboarding ? 130 : 180)
             VStack(spacing: 6) {
                 Text(store.isPro ? "You have PRO. Thank you!" : "Unlock Spotlit PRO")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
@@ -120,7 +120,7 @@ enum Onboarding {
 }
 
 struct OnboardingView: View {
-    @State private var step = 0
+    @State private var step = UserDefaults.standard.integer(forKey: "obStep") // launch arg -obStep N jumps to a step
     @AppStorage("shape") private var shape = "circle"
     @AppStorage("size") private var size = 56.0
     @AppStorage("haloStyle") private var style = "fill"
@@ -143,7 +143,7 @@ struct OnboardingView: View {
                 default: done
                 }
             }
-            .frame(maxHeight: .infinity, alignment: .top)
+            .frame(maxHeight: .infinity)
             .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
                                     removal: .move(edge: .leading).combined(with: .opacity)))
             .id(step)
@@ -173,6 +173,7 @@ struct OnboardingView: View {
         .padding(.top, 36)
         .padding(.bottom, 24)
         .frame(width: 600, height: 640)
+        .background(RadialGradient(colors: [Color(hex: "#FFB020").opacity(0.16), .clear], center: .top, startRadius: 0, endRadius: 420))
         .clipped()
     }
 
