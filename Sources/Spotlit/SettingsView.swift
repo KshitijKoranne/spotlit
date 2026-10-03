@@ -373,21 +373,20 @@ struct AppsPane: View {
 
 struct ShortcutsPane: View {
     @AppStorage("holdMode") private var holdMode = false
+    @ObservedObject private var store = Store.shared
 
     var body: some View {
         Form {
             Section {
-                LabeledContent("Turn Spotlit on or off") { ShortcutRecorder("toggle") }
-                LabeledContent("Next preset") { ShortcutRecorder("next") }
-                LabeledContent("Spotlight Dim") { ShortcutRecorder("dim") }
-                LabeledContent("Keystrokes") { ShortcutRecorder("keys") }
-                LabeledContent("Magnifier") { ShortcutRecorder("mag") }
+                ForEach(HotKeys.names.indices, id: \.self) { i in
+                    LabeledContent(HotKeys.titles[i]) { ShortcutRecorder(HotKeys.names[i]) }
+                }
             } footer: {
-                Text("Changing shortcuts is part of PRO. Click a shortcut, then press the new keys. Press Delete to clear it.")
+                Text("\(store.isPro ? "" : "Changing shortcuts is part of PRO. ")Click a shortcut, then press the new keys. Each shortcut needs ⌃ Control, or ⌥ Option with ⌘ Command. This keeps typing and app shortcuts like ⌘C working. Press Delete to clear a shortcut.")
             }
             Section {
                 Toggle(isOn: proBinding("holdMode", "Hold-Key Mode")) {
-                    HStack { Text("Show effects only while holding ⌥ Option"); if !Store.shared.isPro { ProBadge() } }
+                    HStack { Text("Show effects only while holding ⌥ Option"); if !store.isPro { ProBadge() } }
                 }
             } footer: {
                 Text("The halo, dim and magnifier show only while you hold the Option key.")

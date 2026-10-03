@@ -96,18 +96,17 @@ final class Tracker: ObservableObject {
         if f.contains(.option) { mods.append("⌥") }
         if f.contains(.shift) { mods.append("⇧") }
         if f.contains(.command) { mods.append("⌘") }
-        let special: [UInt16: String] = [36: "↩", 48: "⇥", 49: "Space", 51: "⌫", 53: "esc", 76: "⌤",
-                                         117: "⌦", 123: "←", 124: "→", 125: "↓", 126: "↑"]
-        let name = special[e.keyCode] ?? (e.charactersIgnoringModifiers ?? "").uppercased()
-        guard !name.isEmpty else { return }
         let shortcut = f.contains(.command) || f.contains(.control) || f.contains(.option)
+        // Plain typing shows what ⇧ types ("A", "!"); named keys keep their ⇧ (⇧ ⇥).
+        guard let name = HotKeys.keyName(e, typed: !shortcut) else { return }
         if UserDefaults.standard.string(forKey: "keysMode") == "shortcuts", !shortcut { return }
+        let caps = (shortcut || HotKeys.glyphs[e.keyCode] != nil ? mods : []) + [name]
 
         let now = Date()
         if !shortcut, lastKeyPlain, now.timeIntervalSince(lastKeyTime) < 1.2 {
-            keys = Array((keys + [name]).suffix(12))
+            keys = Array((keys + caps).suffix(12))
         } else {
-            keys = (shortcut ? mods : []) + [name]
+            keys = caps
         }
         lastKeyPlain = !shortcut
         lastKeyTime = now
