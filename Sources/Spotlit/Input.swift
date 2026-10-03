@@ -126,7 +126,8 @@ final class KeyTap: ObservableObject {
     func start() {
         wanted = true
         guard tap == nil, poll == nil else { return }
-        if !UserDefaults.standard.bool(forKey: "askedKeys"), !CGPreflightListenEventAccess() { request() } else { check() }
+        // A free preview never prompts; the paywall opens instead (Store.set).
+        if Store.shared.isPro, !UserDefaults.standard.bool(forKey: "askedKeys"), !CGPreflightListenEventAccess() { request() } else { check() }
     }
 
     func stop() {

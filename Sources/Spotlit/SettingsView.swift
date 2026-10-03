@@ -91,6 +91,7 @@ struct GeneralPane: View {
                 Toggle("Launch at login", isOn: Binding(get: { loginOn }, set: { on in
                     try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                     loginOn = SMAppService.mainApp.status == .enabled
+                    if on && SMAppService.mainApp.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
                 }))
                 Toggle("Shake the pointer to find it", isOn: $shake)
                 Toggle("Show effects in screenshots and recordings", isOn: $inRecordings)
@@ -100,6 +101,9 @@ struct GeneralPane: View {
             Section {
                 Button("Show Welcome Tour…") { Onboarding.show() }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            loginOn = SMAppService.mainApp.status == .enabled // onboarding or System Settings may have changed it
         }
     }
 }
@@ -118,9 +122,9 @@ struct HaloPane: View {
             Section {
                 HStack {
                     Spacer()
-                    HaloView(shape: shape, size: min(size, 110), style: style, color: color, opacity: opacity)
+                    HaloView(shape: shape, size: size, style: style, color: color, opacity: opacity)
                         .overlay(Image(systemName: "cursorarrow").font(.system(size: 22)).offset(x: 6, y: 8))
-                        .frame(height: 120)
+                        .frame(height: 180) // largest size (160) plus its shadow
                     Spacer()
                 }
             }
@@ -382,7 +386,7 @@ struct ShortcutsPane: View {
                 Text("Changing shortcuts is part of PRO. Click a shortcut, then press the new keys. Press Delete to clear it.")
             }
             Section {
-                Toggle(isOn: proBinding("holdMode", "Hold-key mode")) {
+                Toggle(isOn: proBinding("holdMode", "Hold-Key Mode")) {
                     HStack { Text("Show effects only while holding ⌥ Option"); if !Store.shared.isPro { ProBadge() } }
                 }
             } footer: {

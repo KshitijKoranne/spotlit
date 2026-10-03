@@ -73,7 +73,7 @@ enum Presets {
         guard var v = values(name) else { return }
         if name == "Default" || Store.shared.isPro { Store.shared.endPreview(revert: true); return apply(name) }
         v["preset"] = name
-        Store.shared.preview("\(name) preset", v)
+        Store.shared.preview("\(name) Preset", v)
     }
 
     static func next() {
@@ -109,6 +109,7 @@ enum Presets {
         c[name] = nil
         UserDefaults.standard.set(c, forKey: "customPresets")
         if UserDefaults.standard.string(forKey: "preset") == name { apply("Default") }
+        AutoOn.shared.prune()
     }
 }
 
@@ -143,8 +144,12 @@ enum Windows {
     }
 
     static func close(_ id: String) { open[id]?.close() }
+    static func isOpen(_ id: String) -> Bool { open[id]?.isVisible == true }
     static func settings() { show("settings", title: "Spotlit Settings", SettingsView()) }
-    static func paywall() { show("pro", title: "Spotlit PRO", transparent: true, PaywallView()) }
+    static func paywall() {
+        Task { await Store.shared.load() }
+        show("pro", title: "Spotlit PRO", transparent: true, PaywallView())
+    }
 }
 
 extension Color {

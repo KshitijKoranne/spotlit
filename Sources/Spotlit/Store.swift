@@ -17,6 +17,7 @@ final class Store: ObservableObject {
     private var revert: [String: Any] = [:]
     private var revertKeys: [String] = []
 
+    // ponytail: US price until the product loads; Windows.paywall() retries the load.
     var price: String { product?.displayPrice ?? "$2.99" }
 
     func start() {
@@ -28,9 +29,14 @@ final class Store: ObservableObject {
         }
         Task { [weak self] in
             await self?.refresh()
-            let p = try? await Product.products(for: [Self.productID]).first
-            await MainActor.run { self?.product = p }
+            await self?.load()
         }
+    }
+
+    /// Fetches the product if missing, e.g. when Spotlit opened at login before the network was up.
+    func load() async {
+        guard product == nil, let p = try? await Product.products(for: [Self.productID]).first else { return }
+        await MainActor.run { product = p }
     }
 
     func refresh() async {
@@ -40,26 +46,32 @@ final class Store: ObservableObject {
         }
         await MainActor.run {
             isPro = pro
-            if pro { endPreview(revert: false) } else { lockProFeatures() }
+            if pro { endPreview(revert: false); message = nil } else { lockProFeatures() }
         }
     }
 
     func buy() async {
         await MainActor.run { busy = true; message = nil }
         defer { Task { @MainActor in busy = false } }
+        await load()
+        guard let product else {
+            await MainActor.run { message = "The App Store is not available. Try again later." }
+            return
+        }
         do {
-            if product == nil {
-                let p = try await Product.products(for: [Self.productID]).first
-                await MainActor.run { product = p }
-            }
-            guard let product else {
-                await MainActor.run { message = "The App Store is not available. Try again later." }
-                return
-            }
-            if case .success(let v) = try await product.purchase(), case .verified(let t) = v {
+            switch try await product.purchase() {
+            case .success(.verified(let t)):
                 await t.finish()
                 await refresh()
+            case .success(.unverified):
+                await MainActor.run { message = "The App Store could not verify the purchase. Try again later." }
+            case .pending:
+                await MainActor.run { message = "Your purchase is waiting for approval. PRO unlocks once it is approved." }
+            default:
+                break // Cancelled: nothing to say.
             }
+        } catch StoreKitError.userCancelled {
+            // The user closed the Apple Account sign-in.
         } catch {
             await MainActor.run { message = error.localizedDescription }
         }
@@ -67,17 +79,22 @@ final class Store: ObservableObject {
 
     func restore() async {
         await MainActor.run { busy = true; message = nil }
-        try? await AppStore.sync()
-        await refresh()
-        await MainActor.run {
-            busy = false
-            if !isPro { message = "No purchase found for this Apple Account." }
+        defer { Task { @MainActor in busy = false } }
+        do {
+            try await AppStore.sync()
+        } catch StoreKitError.userCancelled {
+            return // The user closed the Apple Account sign-in.
+        } catch {
+            await MainActor.run { message = error.localizedDescription }
+            return
         }
+        await refresh()
+        await MainActor.run { if !isPro { message = "No purchase found for this Apple Account." } }
     }
 
     // MARK: Preview gate
 
-    /// Applies `changes` now. Without PRO they last 5 seconds, then the paywall opens.
+    /// Applies `changes` now. Without PRO they last 5 seconds, then the paywall opens (unless the tour is open).
     func preview(_ label: String, _ changes: [String: Any]) {
         let d = UserDefaults.standard
         if isPro { return changes.forEach { d.set($1, forKey: $0) } }
@@ -91,13 +108,17 @@ final class Store: ObservableObject {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self?.endPreview(revert: true)
-                Windows.paywall()
+                if !Windows.isOpen("onboarding") { Windows.paywall() } // the tour has its own paywall step
             }
         }
     }
 
     /// Turns a PRO switch on (with preview) or off.
     func set(_ key: String, _ on: Bool, label: String) {
+        // A preview never asks for a permission, and without it there is nothing to preview.
+        if on, !isPro, (key == "keysOn" && !CGPreflightListenEventAccess()) || (key == "magOn" && !CGPreflightScreenCaptureAccess()) {
+            return Windows.paywall()
+        }
         if on { return preview(label, [key: true]) }
         if revertKeys.contains(key) { endPreview(revert: true) }
         UserDefaults.standard.set(false, forKey: key)

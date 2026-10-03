@@ -212,7 +212,7 @@ struct Swatches: View {
         HStack(spacing: 5) {
             ForEach(Paint.free + Paint.pro, id: \.self) { c in
                 Button {
-                    c.hasPrefix("g:") ? store.preview("Exclusive colors", [key: c]) : UserDefaults.standard.set(c, forKey: key)
+                    c.hasPrefix("g:") ? store.preview("Exclusive Colors", [key: c]) : UserDefaults.standard.set(c, forKey: key)
                 } label: {
                     Circle()
                         .fill(Paint.style(c))
@@ -236,7 +236,7 @@ struct ClickEffectPicker: View {
     let value: String
     var body: some View {
         Picker("Effect", selection: Binding(get: { value }, set: { v in
-            v == "ripple" ? UserDefaults.standard.set(v, forKey: "clickAnim") : Store.shared.preview("click effects", ["clickAnim": v])
+            v == "ripple" ? UserDefaults.standard.set(v, forKey: "clickAnim") : Store.shared.preview("Click Effects", ["clickAnim": v])
         })) {
             Text("Ripple").tag("ripple")
             Text("Pulse ✦").tag("pulse")

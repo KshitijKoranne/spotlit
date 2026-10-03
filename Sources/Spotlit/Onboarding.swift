@@ -72,7 +72,8 @@ struct PaywallView: View {
             VStack(spacing: 6) {
                 Text(store.isPro ? "You have PRO. Thank you!" : "Unlock Spotlit PRO")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
-                Text("One payment of \(store.price). No subscription. Yours on every Mac with your Apple Account.")
+                Text(store.isPro ? "Everything below is unlocked on every Mac with your Apple Account."
+                                 : "One payment of \(store.price). No subscription. Yours on every Mac with your Apple Account.")
                     .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             ProFeatureList().padding(.horizontal, 6)
@@ -147,6 +148,7 @@ struct OnboardingView: View {
     @AppStorage("clicksOn") private var clicksOn = true
     @AppStorage("shake") private var shake = true
     @State private var login = SMAppService.mainApp.status == .enabled || !UserDefaults.standard.bool(forKey: "onboarded")
+    @ObservedObject private var store = Store.shared
 
     private let steps = 5
 
@@ -226,7 +228,7 @@ struct OnboardingView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(LinearGradient(colors: [Color(hex: "#2B3A67"), Color(hex: "#151B33")], startPoint: .top, endPoint: .bottom))
-                HaloView(shape: shape, size: max(size, 70), style: style, color: color, opacity: opacity)
+                HaloView(shape: shape, size: size, style: style, color: color, opacity: opacity)
                     .overlay(Image(systemName: "cursorarrow").font(.system(size: 26)).foregroundStyle(.white).shadow(radius: 2).offset(x: 6, y: 9))
             }
             .frame(height: 190)
@@ -242,6 +244,10 @@ struct OnboardingView: View {
                 }.pickerStyle(.segmented).labelsHidden()
                 HStack { Text("Size").foregroundStyle(.secondary); Slider(value: $size, in: 20...160) }
                 Swatches(key: "haloColor", hex: color).scaleEffect(1.25).padding(.top, 4)
+                Text("Gradients are part of Spotlit PRO. This is a 5-second preview.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .opacity(color.hasPrefix("g:") && !store.isPro ? 1 : 0)
+                    .animation(.easeOut(duration: 0.2), value: color)
             }
             .font(.system(size: 13))
         }

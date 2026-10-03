@@ -143,7 +143,7 @@ final class Magnifier: NSObject, ObservableObject, SCStreamOutput {
         let ok = CGPreflightScreenCaptureAccess()
         if allowed != ok { allowed = ok }
         guard ok else {
-            if !UserDefaults.standard.bool(forKey: "askedScreen") { request() }
+            if Store.shared.isPro, !UserDefaults.standard.bool(forKey: "askedScreen") { request() } // a free preview never prompts
             return
         }
         starting = true
@@ -463,11 +463,20 @@ final class AutoOn: ObservableObject {
     private var saved: [String: Any]?
 
     func start() {
+        prune()
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                                                           object: nil, queue: .main) { [weak self] n in
             let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             self?.activated(app?.bundleIdentifier)
         }
+    }
+
+    /// Anything that names a deleted preset falls back to Default.
+    func prune() {
+        func gone(_ name: String?) -> Bool { Presets.values(name ?? "") == nil }
+        for i in rules.indices where gone(rules[i].preset) { rules[i].preset = "Default" }
+        if saved != nil, gone(saved?["preset"] as? String) { saved?["preset"] = "Default" }
+        if gone(UserDefaults.standard.string(forKey: "preset")) { UserDefaults.standard.set("Default", forKey: "preset") }
     }
 
     private func activated(_ id: String?) {
