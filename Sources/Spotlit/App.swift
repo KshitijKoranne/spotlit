@@ -71,7 +71,7 @@ enum Presets {
     /// User choice: PRO presets get a live preview first.
     static func choose(_ name: String) {
         guard var v = values(name) else { return }
-        if name == "Default" || Store.shared.isPro { return apply(name) }
+        if name == "Default" || Store.shared.isPro { Store.shared.endPreview(revert: true); return apply(name) }
         v["preset"] = name
         Store.shared.preview("\(name) preset", v)
     }
@@ -88,7 +88,16 @@ enum Presets {
         return r
     }
 
+    /// Trimmed name to save under: an existing custom name keeps its spelling. Nil if empty or built-in.
+    static func saveName(_ name: String) -> String? {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        func same(_ s: String) -> Bool { s.caseInsensitiveCompare(n) == .orderedSame }
+        if n.isEmpty || builtInNames.contains(where: same) { return nil }
+        return custom.keys.first(where: same) ?? n
+    }
+
     static func save(_ name: String) {
+        guard let name = saveName(name) else { return }
         var c = custom
         c[name] = snapshot()
         UserDefaults.standard.set(c, forKey: "customPresets")

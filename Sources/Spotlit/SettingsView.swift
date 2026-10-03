@@ -289,17 +289,21 @@ struct PresetsPane: View {
             }
             Section("Save current settings") {
                 HStack {
-                    TextField("Name", text: $newName)
-                    Button("Save") {
-                        guard store.isPro else { return Windows.paywall() }
-                        Presets.save(newName.trimmingCharacters(in: .whitespaces))
-                        newName = ""
-                        names = Presets.names
-                    }
-                    .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty || Presets.builtInNames.contains(newName))
+                    TextField("Name", text: $newName).onSubmit(save)
+                    Button(names.contains(target ?? "") ? "Replace" : "Save", action: save).disabled(target == nil)
                 }
             }
         }
+    }
+
+    private var target: String? { Presets.saveName(newName) }
+
+    private func save() {
+        guard let n = target else { return }
+        guard store.isPro else { return Windows.paywall() }
+        Presets.save(n)
+        newName = ""
+        names = Presets.names
     }
 }
 
