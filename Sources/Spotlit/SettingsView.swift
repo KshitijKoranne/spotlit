@@ -71,7 +71,7 @@ struct ProBanner: View {
                     Image(systemName: "sparkles").font(.title2).foregroundStyle(Color(hex: "#F5A000"))
                     Text(text).fixedSize(horizontal: false, vertical: true)
                     Spacer()
-                    Button("Unlock · \(store.price)") { Windows.paywall() }
+                    Button("Unlock\(store.price.map { " · \($0)" } ?? "")") { Windows.paywall() }
                         .buttonStyle(.borderedProminent).tint(Color(hex: "#F5A000"))
                 }
             }
@@ -189,6 +189,7 @@ struct DimPane: View {
     @AppStorage("dimOn") private var dimOn = false
     @AppStorage("dimAmount") private var amount = 0.55
     @AppStorage("dimSize") private var size = 170.0
+    @AppStorage("hk.dim") private var hk = ""
 
     var body: some View {
         Form {
@@ -198,7 +199,7 @@ struct DimPane: View {
                 Slider(value: $amount, in: 0.2...0.85) { Text("Dim amount") }
                 Slider(value: $size, in: 80...400) { Text("Spotlight size") }
             } footer: {
-                Text("Shortcut: \(HotKeys.label("dim"))")
+                Text("Shortcut: \(HotKeys.label(value: hk))")
             }
         }
     }
@@ -248,6 +249,7 @@ struct MagnifierPane: View {
     @AppStorage("magZoom") private var zoom = 2.0
     @AppStorage("magSize") private var size = 200.0
     @AppStorage("magShape") private var shape = "circle"
+    @AppStorage("hk.mag") private var hk = ""
     @State private var allowed = Overlay.shared.magnifier.allowed
 
     var body: some View {
@@ -265,7 +267,7 @@ struct MagnifierPane: View {
                     Text("Rounded").tag("rounded")
                 }.pickerStyle(.segmented)
             } footer: {
-                Text("The magnifier needs Screen Recording permission. macOS asks the first time you turn it on. After you allow it, quit and reopen Spotlit. Shortcut: \(HotKeys.label("mag"))")
+                Text("The magnifier needs Screen Recording permission. macOS asks the first time you turn it on. After you allow it, quit and reopen Spotlit. Shortcut: \(HotKeys.label(value: hk))")
             }
         }
         .onReceive(Overlay.shared.magnifier.$allowed) { allowed = $0 }
@@ -274,6 +276,7 @@ struct MagnifierPane: View {
 
 struct PresetsPane: View {
     @AppStorage("preset") private var preset = "Default"
+    @AppStorage("hk.next") private var hk = ""
     @State private var names = Presets.names
     @State private var newName = ""
     @ObservedObject private var store = Store.shared
@@ -295,7 +298,7 @@ struct PresetsPane: View {
                     }
                 }
             } footer: {
-                Text("Next preset: \(HotKeys.label("next"))")
+                Text("Next preset: \(HotKeys.label(value: hk))")
             }
             Section("Save current settings") {
                 HStack {
@@ -405,7 +408,7 @@ struct ProPane: View {
                         .foregroundStyle(.green)
                 } else {
                     ProFeatureList()
-                    Button("Unlock PRO · \(store.price)") { Task { await store.buy() } }
+                    Button("Unlock PRO\(store.price.map { " · \($0)" } ?? "")") { Task { await store.buy() } }
                         .buttonStyle(.borderedProminent).tint(Color(hex: "#F5A000")).disabled(store.busy)
                 }
             }

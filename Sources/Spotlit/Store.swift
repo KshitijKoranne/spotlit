@@ -17,8 +17,8 @@ final class Store: ObservableObject {
     private var revert: [String: Any] = [:]
     private var revertKeys: [String] = []
 
-    // ponytail: US price until the product loads; Windows.paywall() retries the load.
-    var price: String { product?.displayPrice ?? "$2.99" }
+    /// The App Store's local price. Nil until it loads: a guessed price would be wrong outside the US.
+    var price: String? { product?.displayPrice }
 
     func start() {
         updates = Task { [weak self] in

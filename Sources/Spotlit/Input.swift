@@ -39,9 +39,15 @@ enum HotKeys {
 
     /// Same parse as `reload`, so "None" shows exactly when nothing is registered.
     static func label(_ name: String) -> String { parse(name)?.label ?? "None" }
+    /// For views that keep the stored value in @AppStorage, so they redraw when the shortcut changes.
+    static func label(value: String) -> String { parse(value: value)?.label ?? "None" }
 
     private static func parse(_ name: String) -> (code: UInt32, mods: UInt32, label: String)? {
-        let p = (UserDefaults.standard.string(forKey: "hk.\(name)") ?? "").split(separator: ",", maxSplits: 2)
+        parse(value: UserDefaults.standard.string(forKey: "hk.\(name)") ?? "")
+    }
+
+    private static func parse(value: String) -> (code: UInt32, mods: UInt32, label: String)? {
+        let p = value.split(separator: ",", maxSplits: 2)
         guard p.count == 3, let code = UInt32(p[0]), let mods = UInt32(p[1]) else { return nil }
         return (code, mods, String(p[2]))
     }
@@ -132,6 +138,7 @@ struct ShortcutRecorder: View {
         HotKeys.pause()
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { e in
             guard e.type == .keyDown else { if !hover { stop() }; return e }
+            if e.isARepeat { return nil } // a held key beeps once, not 30 times a second
             let f = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
             var mods = 0, text = ""
             if f.contains(.control) { mods |= controlKey; text += "⌃" }

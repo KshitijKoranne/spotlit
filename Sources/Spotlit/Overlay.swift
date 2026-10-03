@@ -90,6 +90,7 @@ final class Tracker: ObservableObject {
     }
 
     private func key(_ e: NSEvent) {
+        guard !e.isARepeat else { return } // a held key shows once
         let f = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
         var mods: [String] = []
         if f.contains(.control) { mods.append("⌃") }

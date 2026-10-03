@@ -5,6 +5,7 @@ struct MenuView: View {
     @ObservedObject private var keyTap = KeyTap.shared
     @State private var magAllowed = Overlay.shared.magnifier.allowed // not observed: the magnifier publishes every frame
     @AppStorage("enabled") private var enabled = true
+    @AppStorage("hk.toggle") private var hkToggle = ""
     @AppStorage("preset") private var preset = "Default"
     @AppStorage("haloMode") private var mode = "always"
     @AppStorage("shape") private var shape = "circle"
@@ -33,6 +34,7 @@ struct MenuView: View {
         }
         .padding(14)
         .frame(width: 580)
+        .task { await store.load() } // shows the real price if launch had no network
         .onReceive(Overlay.shared.magnifier.$allowed) { magAllowed = $0 }
     }
 
@@ -41,7 +43,7 @@ struct MenuView: View {
             AppMark(size: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Spotlit").font(.system(size: 14, weight: .semibold))
-                Text(store.previewing.map { "Previewing \($0)" } ?? (enabled ? "On · \(HotKeys.label("toggle"))" : "Off"))
+                Text(store.previewing.map { "Previewing \($0)" } ?? (enabled ? (hkToggle.isEmpty ? "On" : "On · \(HotKeys.label(value: hkToggle))") : "Off"))
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
@@ -132,7 +134,7 @@ struct MenuView: View {
         HStack {
             if !store.isPro {
                 Button { Windows.paywall() } label: {
-                    Label("Unlock PRO · \(store.price)", systemImage: "sparkles")
+                    Label("Unlock PRO\(store.price.map { " · \($0)" } ?? "")", systemImage: "sparkles")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color(hex: "#F5A000"))

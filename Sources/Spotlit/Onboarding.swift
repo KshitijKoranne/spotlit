@@ -73,7 +73,7 @@ struct PaywallView: View {
                 Text(store.isPro ? "You have PRO. Thank you!" : "Unlock Spotlit PRO")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                 Text(store.isPro ? "Everything below is unlocked on every Mac with your Apple Account."
-                                 : "One payment of \(store.price). No subscription. Yours on every Mac with your Apple Account.")
+                                 : "One payment\(store.price.map { " of \($0)" } ?? ""). No subscription. Yours on every Mac with your Apple Account.")
                     .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             ProFeatureList().padding(.horizontal, 6)
@@ -83,7 +83,7 @@ struct PaywallView: View {
                 } label: {
                     HStack(spacing: 8) {
                         if store.busy { ProgressView().controlSize(.small) }
-                        Text(store.isPro ? "Continue" : "Unlock for \(store.price)").font(.system(size: 14, weight: .semibold))
+                        Text(store.isPro ? "Continue" : (store.price.map { "Unlock for \($0)" } ?? "Unlock PRO")).font(.system(size: 14, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
@@ -147,6 +147,7 @@ struct OnboardingView: View {
     @AppStorage("opacity") private var opacity = 0.35
     @AppStorage("clicksOn") private var clicksOn = true
     @AppStorage("shake") private var shake = true
+    @AppStorage("hk.toggle") private var hkToggle = ""
     @State private var login = SMAppService.mainApp.status == .enabled || !UserDefaults.standard.bool(forKey: "onboarded")
     @ObservedObject private var store = Store.shared
 
@@ -268,7 +269,7 @@ struct OnboardingView: View {
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             HStack(spacing: 10) {
                 Image(systemName: "command").foregroundStyle(Color(hex: "#F5A000"))
-                Text("Press \(HotKeys.label("toggle")) to turn Spotlit on or off.").font(.system(size: 13))
+                Text("Press \(HotKeys.label(value: hkToggle)) to turn Spotlit on or off.").font(.system(size: 13))
                 Spacer()
             }
             .padding(14)
