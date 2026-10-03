@@ -116,10 +116,11 @@ final class Tracker: ObservableObject {
 }
 
 /// Live screen image for the magnifier. Needs Screen Recording permission.
-final class Magnifier: NSObject, ObservableObject, SCStreamOutput {
+final class Magnifier: NSObject, ObservableObject, SCStreamOutput, SCStreamDelegate {
     @Published var image: CGImage?
     @Published private(set) var allowed = CGPreflightScreenCaptureAccess()
     private var stream: SCStream?
+    private var last: CIImage? // last complete frame; idle frames carry no image
     private var screenFrame: CGRect = .zero
     private var scale: CGFloat = 2
     private var starting = false, on = false
@@ -148,29 +149,39 @@ final class Magnifier: NSObject, ObservableObject, SCStreamOutput {
         starting = true
         Task { @MainActor in
             defer { starting = false }
-            do {
-                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-                let mouse = NSEvent.mouseLocation
-                guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main,
-                      let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
-                      let display = content.displays.first(where: { $0.displayID == id }) else { return }
-                let mine = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
-                let cfg = SCStreamConfiguration()
-                cfg.width = Int(screen.frame.width * screen.backingScaleFactor)
-                cfg.height = Int(screen.frame.height * screen.backingScaleFactor)
-                cfg.minimumFrameInterval = CMTime(value: 1, timescale: 30)
-                cfg.showsCursor = false
-                cfg.queueDepth = 3
-                let s = SCStream(filter: SCContentFilter(display: display, excludingApplications: mine, exceptingWindows: []),
-                                 configuration: cfg, delegate: nil)
-                try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: .main)
-                try await s.startCapture()
-                screenFrame = screen.frame
-                scale = screen.backingScaleFactor
-                stream = s
-                if !on { stop() } // turned off while starting
-            } catch {
-                NSLog("Spotlit magnifier: \(error.localizedDescription)")
+            var delays: [UInt64] = [0, 1, 3] // ponytail: 3 tries in 4 s, then it waits for a settings or display change
+            while !delays.isEmpty {
+                try? await Task.sleep(nanoseconds: delays.removeFirst() * 1_000_000_000)
+                guard on else { return } // stop() ends the retries
+                do {
+                    let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                    guard on else { return }
+                    let mouse = NSEvent.mouseLocation
+                    guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }),
+                          let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+                          let display = content.displays.first(where: { $0.displayID == id }) else { continue }
+                    let mine = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+                    let cfg = SCStreamConfiguration()
+                    cfg.width = Int(screen.frame.width * screen.backingScaleFactor)
+                    cfg.height = Int(screen.frame.height * screen.backingScaleFactor)
+                    cfg.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+                    cfg.showsCursor = false
+                    cfg.queueDepth = 3
+                    let s = SCStream(filter: SCContentFilter(display: display, excludingApplications: mine, exceptingWindows: []),
+                                     configuration: cfg, delegate: self)
+                    try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: .main)
+                    // Set first: the first complete frame, the only one on a static screen, can beat startCapture's return.
+                    screenFrame = screen.frame
+                    scale = screen.backingScaleFactor
+                    stream = s
+                    try await s.startCapture()
+                    if stream === s { return }
+                    try? await s.stopCapture() // stop() ran while starting
+                    delays.insert(0, at: 0) // so a start() since then retries now, free
+                } catch {
+                    stream = nil // only this task sets stream while starting
+                    NSLog("Spotlit magnifier: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -179,18 +190,44 @@ final class Magnifier: NSObject, ObservableObject, SCStreamOutput {
         on = false
         stream?.stopCapture()
         stream = nil
+        last = nil
         image = nil
     }
 
-    func stream(_ s: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen, s === stream, let pb = buffer.imageBuffer else { return } // ignore frames from a stopped stream
-        let m = NSEvent.mouseLocation
+    /// Crops the lens from the last complete frame. Runs per frame, per pointer move and per settings change.
+    func crop(_ m: CGPoint = NSEvent.mouseLocation) {
+        guard let last else { return }
         guard NSMouseInRect(m, screenFrame, false) else { stop(); start(); return } // pointer went to another screen
         let d = UserDefaults.standard
-        let side = d.double(forKey: "magSize") / max(1, d.double(forKey: "magZoom"))
-        let rect = CGRect(x: (m.x - screenFrame.minX - side / 2) * scale, y: (m.y - screenFrame.minY - side / 2) * scale,
-                          width: side * scale, height: side * scale)
-        image = ctx.createCGImage(CIImage(cvPixelBuffer: pb), from: rect)
+        let n = (d.double(forKey: "magSize") / max(1, d.double(forKey: "magZoom")) * scale).rounded() // whole pixels, no resampling
+        let r = CGRect(x: ((m.x - screenFrame.minX) * scale - n / 2).rounded(), y: ((m.y - screenFrame.minY) * scale - n / 2).rounded(),
+                       width: n, height: n)
+        // ponytail: black past this display's edge, even where another display continues.
+        image = ctx.createCGImage(last.composited(over: CIImage(color: .black)), from: r)
+    }
+
+    func stream(_ s: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard type == .screen, s === stream, // ignore frames from a stopped stream
+              let info = (CMSampleBufferGetSampleAttachmentsArray(buffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]])?.first,
+              (info[SCStreamFrameInfo.status] as? Int) == SCFrameStatus.complete.rawValue,
+              let pb = buffer.imageBuffer else { return }
+        last = CIImage(cvPixelBuffer: pb) // holds one of the 3 queued buffers until the next complete frame
+        crop()
+    }
+
+    func stream(_ s: SCStream, didStopWithError error: Error) {
+        DispatchQueue.main.async { [self] in
+            guard s === stream else { return }
+            NSLog("Spotlit magnifier stopped: \(error.localizedDescription)")
+            let worked = last != nil
+            stream = nil
+            stop()
+            if (error as? SCStreamError)?.code == .userStopped {
+                UserDefaults.standard.set(false, forKey: "magOn") // stopped from the system menu: show it as off
+            } else if worked {
+                start() // ponytail: only a stream that showed a frame restarts, so one that dies at birth cannot loop
+            }
+        }
     }
 }
 
@@ -200,10 +237,12 @@ final class Overlay {
     let tracker = Tracker()
     let magnifier = Magnifier()
     private var windows: [NSWindow] = []
+    private var follow: AnyCancellable?
 
     func start() {
         rebuild()
         tracker.start()
+        follow = tracker.$point.sink { [weak self] in self?.magnifier.crop($0) } // a static screen sends no frames
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in self?.rebuild() }
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,
@@ -241,6 +280,7 @@ final class Overlay {
         windows.forEach { $0.sharingType = d.bool(forKey: "inRecordings") ? .readOnly : .none }
         on && d.bool(forKey: "keysOn") ? KeyTap.shared.start() : KeyTap.shared.stop()
         on && d.bool(forKey: "magOn") ? magnifier.start() : magnifier.stop()
+        magnifier.crop() // magZoom and magSize apply without a pointer move
     }
 }
 
