@@ -115,8 +115,15 @@ enum Presets {
 /// Plain AppKit windows so an accessory app can open them from anywhere.
 enum Windows {
     private static var open: [String: NSWindow] = [:]
+    /// Closed windows leave the cache, so the next show builds a fresh view and the old one is freed.
+    private static let closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: nil) { n in
+        guard let w = n.object as? NSWindow, let id = open.first(where: { $0.value === w })?.key else { return }
+        open[id] = nil
+        DispatchQueue.main.async { withExtendedLifetime(w) {} } // free it after AppKit and SwiftUI finish the close
+    }
 
     static func show<V: View>(_ id: String, title: String, transparent: Bool = false, _ view: V) {
+        _ = closing
         let w = open[id] ?? {
             let w = NSWindow(contentViewController: NSHostingController(rootView: view))
             w.title = title

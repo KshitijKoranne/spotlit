@@ -40,6 +40,8 @@ struct LoopingVideo: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {}
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) { (nsView.layer as? AVPlayerLayer)?.player?.pause() }
 }
 
 /// Square card that holds the mascot art, so it never crops.
@@ -61,6 +63,8 @@ struct PaywallView: View {
     var inOnboarding = false
     var onDone: () -> Void = { Windows.close("pro") }
     @ObservedObject private var store = Store.shared
+    @State private var finished = false
+    @State private var advance: Task<Void, Never>? = nil
 
     var body: some View {
         VStack(spacing: inOnboarding ? 14 : 18) {
@@ -74,7 +78,7 @@ struct PaywallView: View {
             ProFeatureList().padding(.horizontal, 6)
             VStack(spacing: 10) {
                 Button {
-                    if store.isPro { onDone() } else { Task { await store.buy() } }
+                    if store.isPro { finish() } else { Task { await store.buy() } }
                 } label: {
                     HStack(spacing: 8) {
                         if store.busy { ProgressView().controlSize(.small) }
@@ -91,7 +95,7 @@ struct PaywallView: View {
 
                 HStack(spacing: 18) {
                     Button("Restore Purchase") { Task { await store.restore() } }
-                    if !store.isPro { Button(inOnboarding ? "Maybe Later" : "Not Now", action: onDone) }
+                    if !store.isPro { Button(inOnboarding ? "Maybe Later" : "Not Now", action: finish) }
                 }
                 .buttonStyle(.link)
                 .font(.system(size: 12))
@@ -105,8 +109,22 @@ struct PaywallView: View {
         .padding(inOnboarding ? 0 : 28)
         .frame(width: inOnboarding ? nil : 520)
         .onChange(of: store.isPro) { pro in
-            if pro { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: onDone) }
+            advance?.cancel()
+            guard pro else { return }
+            advance = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                if !Task.isCancelled { finish() }
+            }
         }
+        .onDisappear { advance?.cancel() }
+    }
+
+    /// Button and auto-advance share this, so `onDone` runs once.
+    private func finish() {
+        advance?.cancel()
+        guard !finished else { return }
+        finished = true
+        onDone()
     }
 }
 
@@ -128,7 +146,7 @@ struct OnboardingView: View {
     @AppStorage("opacity") private var opacity = 0.35
     @AppStorage("clicksOn") private var clicksOn = true
     @AppStorage("shake") private var shake = true
-    @State private var login = true
+    @State private var login = SMAppService.mainApp.status == .enabled || !UserDefaults.standard.bool(forKey: "onboarded")
 
     private let steps = 5
 
@@ -139,7 +157,7 @@ struct OnboardingView: View {
                 case 0: welcome
                 case 1: pickHalo
                 case 2: basics
-                case 3: PaywallView(inOnboarding: true) { next() }
+                case 3: PaywallView(inOnboarding: true) { if step == 3 { next() } }
                 default: done
                 }
             }
