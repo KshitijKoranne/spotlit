@@ -119,21 +119,40 @@ final class Tracker: ObservableObject {
 /// Live screen image for the magnifier. Needs Screen Recording permission.
 final class Magnifier: NSObject, ObservableObject, SCStreamOutput {
     @Published var image: CGImage?
+    @Published private(set) var allowed = CGPreflightScreenCaptureAccess()
     private var stream: SCStream?
     private var screenFrame: CGRect = .zero
     private var scale: CGFloat = 2
-    private var starting = false
+    private var starting = false, on = false
     private let ctx = CIContext(options: [.cacheIntermediates: false])
 
+    /// macOS shows its prompt only once. After that, open System Settings.
+    func request() {
+        let d = UserDefaults.standard
+        if d.bool(forKey: "askedScreen") {
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+        } else {
+            d.set(true, forKey: "askedScreen")
+            CGRequestScreenCaptureAccess()
+        }
+    }
+
     func start() {
+        on = true
         guard stream == nil, !starting else { return }
+        let ok = CGPreflightScreenCaptureAccess()
+        if allowed != ok { allowed = ok }
+        guard ok else {
+            if !UserDefaults.standard.bool(forKey: "askedScreen") { request() }
+            return
+        }
         starting = true
-        Task {
+        Task { @MainActor in
             defer { starting = false }
             do {
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
                 let mouse = NSEvent.mouseLocation
-                guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main,
+                guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main,
                       let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
                       let display = content.displays.first(where: { $0.displayID == id }) else { return }
                 let mine = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
@@ -150,6 +169,7 @@ final class Magnifier: NSObject, ObservableObject, SCStreamOutput {
                 screenFrame = screen.frame
                 scale = screen.backingScaleFactor
                 stream = s
+                if !on { stop() } // turned off while starting
             } catch {
                 NSLog("Spotlit magnifier: \(error.localizedDescription)")
             }
@@ -157,15 +177,16 @@ final class Magnifier: NSObject, ObservableObject, SCStreamOutput {
     }
 
     func stop() {
+        on = false
         stream?.stopCapture()
         stream = nil
         image = nil
     }
 
-    func stream(_ stream: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen, let pb = buffer.imageBuffer else { return }
+    func stream(_ s: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard type == .screen, s === stream, let pb = buffer.imageBuffer else { return } // ignore frames from a stopped stream
         let m = NSEvent.mouseLocation
-        guard screenFrame.contains(m) else { stop(); start(); return } // pointer went to another screen
+        guard NSMouseInRect(m, screenFrame, false) else { stop(); start(); return } // pointer went to another screen
         let d = UserDefaults.standard
         let side = d.double(forKey: "magSize") / max(1, d.double(forKey: "magZoom"))
         let rect = CGRect(x: (m.x - screenFrame.minX - side / 2) * scale, y: (m.y - screenFrame.minY - side / 2) * scale,
@@ -210,6 +231,7 @@ final class Overlay {
             w.orderFrontRegardless()
             return w
         }
+        magnifier.stop() // screens changed; sync() restarts it with the new geometry
         sync()
     }
 

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct MenuView: View {
     @ObservedObject private var store = Store.shared
+    @ObservedObject private var keyTap = KeyTap.shared
+    @State private var magAllowed = Overlay.shared.magnifier.allowed // not observed: the magnifier publishes every frame
     @AppStorage("enabled") private var enabled = true
     @AppStorage("preset") private var preset = "Default"
     @AppStorage("haloMode") private var mode = "always"
@@ -31,6 +33,7 @@ struct MenuView: View {
         }
         .padding(14)
         .frame(width: 580)
+        .onReceive(Overlay.shared.magnifier.$allowed) { magAllowed = $0 }
     }
 
     private var header: some View {
@@ -104,8 +107,8 @@ struct MenuView: View {
                 Text("All keys").tag("all")
                 Text("Shortcuts only").tag("shortcuts")
             }.pickerStyle(.segmented).labelsHidden()
-            if keysOn && !KeyTap.shared.allowed {
-                Button("Allow Input Monitoring…") { KeyTap.shared.request() }
+            if keysOn && !keyTap.allowed {
+                Button("Allow Input Monitoring…") { keyTap.request() }
                     .controlSize(.small)
             }
         }
@@ -118,6 +121,10 @@ struct MenuView: View {
                 Text(String(format: "%.1f×", magZoom)).monospacedDigit().foregroundStyle(.secondary).frame(width: 34, alignment: .trailing)
             }
             Row(title: "Lens") { Slider(value: $magSize, in: 120...360) }
+            if magOn && !magAllowed {
+                Button("Allow Screen Recording…") { Overlay.shared.magnifier.request() }
+                    .controlSize(.small)
+            }
         }
     }
 

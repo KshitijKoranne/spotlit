@@ -205,7 +205,7 @@ struct KeysPane: View {
     @AppStorage("keysMode") private var mode = "all"
     @AppStorage("keysPos") private var pos = "bottom"
     @AppStorage("keysSize") private var size = 24.0
-    @State private var allowed = KeyTap.shared.allowed
+    @ObservedObject private var keyTap = KeyTap.shared
 
     var body: some View {
         Form {
@@ -225,30 +225,35 @@ struct KeysPane: View {
             }
             Section {
                 LabeledContent("Input Monitoring") {
-                    if allowed {
+                    if keyTap.allowed {
                         Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                     } else {
-                        Button("Allow…") { KeyTap.shared.request(); allowed = KeyTap.shared.allowed }
+                        Button("Allow…") { keyTap.request() }
                     }
                 }
             } footer: {
-                Text("macOS asks for Input Monitoring so Spotlit can see the keys you press. Spotlit never saves or sends them. Keys typed in password fields are hidden by macOS.")
+                Text("macOS asks for Input Monitoring so Spotlit can see the keys you press. Spotlit never saves or sends them. Keys typed in password fields are hidden by macOS. If keys do not show after you allow it, quit and reopen Spotlit.")
             }
         }
-        .onAppear { allowed = KeyTap.shared.allowed }
+        .onAppear { keyTap.check() }
     }
 }
 
 struct MagnifierPane: View {
+    @AppStorage("magOn") private var magOn = false
     @AppStorage("magZoom") private var zoom = 2.0
     @AppStorage("magSize") private var size = 200.0
     @AppStorage("magShape") private var shape = "circle"
+    @State private var allowed = Overlay.shared.magnifier.allowed
 
     var body: some View {
         Form {
             ProBanner(text: "Zoom in on the area under the pointer, anywhere on screen.")
             Section {
                 Toggle("Magnifier", isOn: proBinding("magOn", "Magnifier"))
+                if magOn && !allowed {
+                    LabeledContent("Screen Recording") { Button("Allow…") { Overlay.shared.magnifier.request() } }
+                }
                 Slider(value: $zoom, in: 1.5...6, step: 0.5) { Text(String(format: "Zoom %.1f×", zoom)) }
                 Slider(value: $size, in: 120...360) { Text("Lens size") }
                 Picker("Lens", selection: $shape) {
@@ -256,9 +261,10 @@ struct MagnifierPane: View {
                     Text("Rounded").tag("rounded")
                 }.pickerStyle(.segmented)
             } footer: {
-                Text("The magnifier needs Screen Recording permission. macOS asks the first time you turn it on. Shortcut: \(HotKeys.label("mag"))")
+                Text("The magnifier needs Screen Recording permission. macOS asks the first time you turn it on. After you allow it, quit and reopen Spotlit. Shortcut: \(HotKeys.label("mag"))")
             }
         }
+        .onReceive(Overlay.shared.magnifier.$allowed) { allowed = $0 }
     }
 }
 

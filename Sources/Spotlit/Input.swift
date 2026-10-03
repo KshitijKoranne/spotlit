@@ -101,43 +101,72 @@ struct ShortcutRecorder: View {
 }
 
 /// Keystrokes via a listen-only event tap. Needs Input Monitoring, which sandboxed App Store apps may use.
-final class KeyTap {
+final class KeyTap: ObservableObject {
     static let shared = KeyTap()
+    @Published private(set) var allowed = CGPreflightListenEventAccess()
     var onKey: ((NSEvent) -> Void)?
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
-    private var asked = false
+    private var poll: Timer?
+    private var wanted = false, asking = false
 
-    var allowed: Bool { CGPreflightListenEventAccess() }
-
-    func request() { CGRequestListenEventAccess() }
+    /// macOS shows its prompt only once. After that, open System Settings.
+    func request() {
+        let d = UserDefaults.standard
+        if d.bool(forKey: "askedKeys") {
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
+        } else {
+            d.set(true, forKey: "askedKeys")
+            CGRequestListenEventAccess()
+        }
+        asking = true
+        check()
+    }
 
     func start() {
-        guard tap == nil else { return }
-        guard CGPreflightListenEventAccess() else {
-            if !asked { asked = true; CGRequestListenEventAccess() }
-            return
-        }
-        tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly,
-                                eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
-                                callback: { _, type, event, _ in
-            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                if let t = KeyTap.shared.tap { CGEvent.tapEnable(tap: t, enable: true) }
-            } else if let e = NSEvent(cgEvent: event) {
-                KeyTap.shared.onKey?(e)
-            }
-            return Unmanaged.passUnretained(event)
-        }, userInfo: nil)
-        guard let tap else { return }
-        source = CFMachPortCreateRunLoopSource(nil, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
+        wanted = true
+        guard tap == nil, poll == nil else { return }
+        if !UserDefaults.standard.bool(forKey: "askedKeys"), !CGPreflightListenEventAccess() { request() } else { check() }
     }
 
     func stop() {
+        wanted = false
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         tap = nil
         source = nil
+        if !asking { poll?.invalidate(); poll = nil }
+    }
+
+    /// Starts the tap once access is granted. macOS sends no notice, so this polls until then.
+    func check() {
+        let ok = CGPreflightListenEventAccess()
+        if ok, wanted, tap == nil {
+            tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly,
+                                    eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
+                                    callback: { _, type, event, _ in
+                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                    if let t = KeyTap.shared.tap { CGEvent.tapEnable(tap: t, enable: true) }
+                } else if let e = NSEvent(cgEvent: event) {
+                    KeyTap.shared.onKey?(e)
+                }
+                return Unmanaged.passUnretained(event)
+            }, userInfo: nil)
+            if let tap {
+                source = CFMachPortCreateRunLoopSource(nil, tap, 0)
+                CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
+        }
+        // A tap that fails even with access (macOS may want a relaunch) counts as not allowed; retry on the slow poll.
+        let now = ok && (tap != nil || !wanted)
+        if allowed != now { allowed = now }
+        if now || !(wanted || asking) {
+            poll?.invalidate()
+            poll = nil
+            asking = false
+        } else if poll == nil {
+            poll = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in self?.check() }
+        }
     }
 }
