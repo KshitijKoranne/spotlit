@@ -25,6 +25,7 @@ final class SpotlitTests: XCTestCase {
         XCTAssertEqual(Paint.colors("#FF0000").count, 1)
     }
 
+    @available(macOS 14.0, *) // SKTestSession.buyProduct(identifier:options:)
     func testStore() async throws {
         let session = try SKTestSession(configurationFileNamed: "Spotlit")
         session.resetToDefaultState()
@@ -34,7 +35,9 @@ final class SpotlitTests: XCTestCase {
         await store.refresh()
         XCTAssertFalse(store.isPro)
 
-        await store.startTrial()
+        // ponytail: the session buys without UI; Product.purchase() waits for a sheet that tests can't answer.
+        try await session.buyProduct(identifier: Store.trialID, options: []).finish() // as Store.purchase does
+        await store.refresh()
         XCTAssertTrue(store.isPro)
         XCTAssertTrue(store.trialUsed)
         XCTAssertFalse(store.purchased)
@@ -44,12 +47,17 @@ final class SpotlitTests: XCTestCase {
         await store.refresh()
         XCTAssertFalse(store.isPro)
 
-        await store.buy()
+        let t = try await session.buyProduct(identifier: Store.proID, options: [])
+        await t.finish()
+        await store.refresh()
         XCTAssertTrue(store.isPro)
         XCTAssertTrue(store.purchased)
-        guard case .verified(let t) = await Transaction.latest(for: Store.proID) else { return XCTFail("no purchase") }
-        try session.refundTransaction(identifier: Int(t.id))
-        await store.refresh()
+        try session.refundTransaction(identifier: UInt(t.id))
+        // A refund reaches the app a moment later (the app hears it on Transaction.updates).
+        for _ in 0..<50 where store.purchased {
+            try await Task.sleep(nanoseconds: 100_000_000)
+            await store.refresh()
+        }
         XCTAssertFalse(store.isPro)
         XCTAssertFalse(store.purchased)
     }
