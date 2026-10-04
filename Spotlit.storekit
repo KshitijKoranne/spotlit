@@ -1,16 +1,14 @@
 {
   "identifier" : "5F2A9C10",
-  "nonRenewingSubscriptions" : [
-
-  ],
+  "nonRenewingSubscriptions" : [],
   "products" : [
     {
-      "displayPrice" : "2.99",
-      "familyShareable" : true,
+      "displayPrice" : "3.99",
+      "familyShareable" : false,
       "internalID" : "6760000001",
       "localizations" : [
         {
-          "description" : "Unlock every Spotlit PRO feature. One-time purchase.",
+          "description" : "Every PRO feature. One-time purchase.",
           "displayName" : "Spotlit PRO",
           "locale" : "en_US"
         }
@@ -18,19 +16,30 @@
       "productID" : "in.kjrlabs.spotlit.pro",
       "referenceName" : "Spotlit PRO",
       "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "0",
+      "familyShareable" : false,
+      "internalID" : "6760000002",
+      "localizations" : [
+        {
+          "description" : "Try every PRO feature free for 3 days.",
+          "displayName" : "3-Day Trial",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "in.kjrlabs.spotlit.trial",
+      "referenceName" : "3-Day Trial",
+      "type" : "NonConsumable"
     }
   ],
   "settings" : {
     "_failTransactionsEnabled" : false,
     "_locale" : "en_US",
     "_storefront" : "USA",
-    "_storeKitErrors" : [
-
-    ]
+    "_storeKitErrors" : []
   },
-  "subscriptionGroups" : [
-
-  ],
+  "subscriptionGroups" : [],
   "version" : {
     "major" : 2,
     "minor" : 0
