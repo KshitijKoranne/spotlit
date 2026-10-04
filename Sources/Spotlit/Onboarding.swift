@@ -4,22 +4,7 @@ import ServiceManagement
 
 // MARK: Mascot
 
-/// The fluffy mascot. Plays Mascot.mp4 in a loop if bundled, else shows the still with a gentle bob.
-/// The art has its own warm background, so it fills the card it sits in.
-struct Mascot: View {
-    @State private var bob = false
-
-    var body: some View {
-        if Bundle.main.url(forResource: "Mascot", withExtension: "mp4") != nil {
-            LoopingVideo(name: "Mascot")
-        } else {
-            Image("Mascot").resizable().scaledToFill()
-                .scaleEffect(bob ? 1.03 : 1, anchor: .bottom)
-                .onAppear { withAnimation(.easeInOut(duration: 1.6).repeatForever()) { bob = true } }
-        }
-    }
-}
-
+/// The fluffy mascot, Mascot.mp4 playing in a loop. The art has its own warm background, so it fills the card it sits in.
 struct LoopingVideo: NSViewRepresentable {
     let name: String
     final class Coordinator { var looper: AVPlayerLooper? }
@@ -49,7 +34,7 @@ struct MascotStage: View {
     var height: CGFloat = 230
     var body: some View {
         Color(hex: "#F8E8BA")
-            .overlay(Mascot())
+            .overlay(LoopingVideo(name: "Mascot"))
             .frame(width: height, height: height)
             .clipShape(RoundedRectangle(cornerRadius: height * 0.12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: height * 0.12, style: .continuous).strokeBorder(.black.opacity(0.06)))
@@ -66,24 +51,42 @@ struct PaywallView: View {
     @State private var finished = false
     @State private var advance: Task<Void, Never>? = nil
 
+    private var offerTrial: Bool { !store.trialUsed && !store.isPro }
+    private var unlock: String { store.price.map { "Unlock for \($0)" } ?? "Unlock PRO" }
+    private var oneTime: String { store.price.map { "a one-time purchase of \($0)" } ?? "a one-time purchase" }
+
+    private var title: String {
+        if store.purchased { return "You have PRO. Thank you!" }
+        if store.isPro { return "Your free trial is on" }
+        return store.trialUsed ? "Your trial has ended" : "Try Spotlit PRO free for 3 days"
+    }
+
+    private var subtitle: String {
+        if store.purchased { return "Everything below is unlocked on every Mac with your Apple Account." }
+        if store.isPro, let end = store.trialEndsAt {
+            return "It ends \(end.formatted(date: .abbreviated, time: .shortened)). Then these features lock again. Keep them with \(oneTime). No subscription."
+        }
+        if store.trialUsed { return "These features are locked. Unlock them with \(oneTime). No subscription. Your settings are kept." }
+        return "The trial lasts 3 days and costs nothing. When it ends, these features lock again. To keep them, unlock PRO with \(oneTime). No subscription."
+    }
+
     var body: some View {
-        VStack(spacing: inOnboarding ? 14 : 18) {
-            MascotStage(height: inOnboarding ? 130 : 180)
+        VStack(spacing: inOnboarding ? 12 : 18) {
+            MascotStage(height: inOnboarding ? 96 : 160)
             VStack(spacing: 6) {
-                Text(store.isPro ? "You have PRO. Thank you!" : "Unlock Spotlit PRO")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                Text(store.isPro ? "Everything below is unlocked on every Mac with your Apple Account."
-                                 : "One payment\(store.price.map { " of \($0)" } ?? ""). No subscription. Yours on every Mac with your Apple Account.")
+                Text(title).font(.system(size: 24, weight: .bold, design: .rounded))
+                Text(subtitle)
                     .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             ProFeatureList().padding(.horizontal, 6)
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Button {
-                    if store.isPro { finish() } else { Task { await store.buy() } }
+                    if store.purchased { finish() } else { Task { offerTrial ? await store.startTrial() : await store.buy() } }
                 } label: {
                     HStack(spacing: 8) {
                         if store.busy { ProgressView().controlSize(.small) }
-                        Text(store.isPro ? "Continue" : (store.price.map { "Unlock for \($0)" } ?? "Unlock PRO")).font(.system(size: 14, weight: .semibold))
+                        Text(store.purchased ? "Continue" : offerTrial ? "Start 3-Day Free Trial" : unlock).font(.system(size: 14, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
@@ -94,9 +97,18 @@ struct PaywallView: View {
                 .disabled(store.busy)
                 .keyboardShortcut(.defaultAction)
 
+                if offerTrial {
+                    Button { Task { await store.buy() } } label: {
+                        Text(unlock).frame(maxWidth: .infinity)
+                    }
+                    .controlSize(.large)
+                    .disabled(store.busy)
+                }
+
                 HStack(spacing: 18) {
                     Button("Restore Purchase") { Task { await store.restore() } }
-                    if !store.isPro { Button(inOnboarding ? "Maybe Later" : "Not Now", action: finish) }
+                    if !store.purchased && store.price == nil { Button("Retry") { Task { await store.load() } } } // shows the price
+                    if !store.purchased { Button(inOnboarding ? "Maybe Later" : "Not Now", action: finish) }
                 }
                 .buttonStyle(.link)
                 .font(.system(size: 12))
@@ -109,15 +121,19 @@ struct PaywallView: View {
         }
         .padding(inOnboarding ? 0 : 28)
         .frame(width: inOnboarding ? nil : 520)
-        .onChange(of: store.isPro) { pro in
-            advance?.cancel()
-            guard pro else { return }
-            advance = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                if !Task.isCancelled { finish() }
-            }
-        }
+        .onChange(of: store.isPro) { _ in unlocked() }
+        .onChange(of: store.purchased) { _ in unlocked() }
         .onDisappear { advance?.cancel() }
+    }
+
+    /// A started trial or a purchase moves on by itself.
+    private func unlocked() {
+        advance?.cancel()
+        guard store.isPro else { return }
+        advance = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if !Task.isCancelled { finish() }
+        }
     }
 
     /// Button and auto-advance share this, so `onDone` runs once.
@@ -131,6 +147,7 @@ struct PaywallView: View {
 
 // MARK: Onboarding
 
+@MainActor
 enum Onboarding {
     static func show() { Windows.show("onboarding", title: "Welcome to Spotlit", transparent: true, OnboardingView()) }
     static func showIfNeeded() {
@@ -139,7 +156,7 @@ enum Onboarding {
 }
 
 struct OnboardingView: View {
-    @State private var step = UserDefaults.standard.integer(forKey: "obStep") // launch arg -obStep N jumps to a step
+    @State private var step = 0
     @AppStorage("shape") private var shape = "circle"
     @AppStorage("size") private var size = 56.0
     @AppStorage("haloStyle") private var style = "fill"
@@ -148,7 +165,7 @@ struct OnboardingView: View {
     @AppStorage("clicksOn") private var clicksOn = true
     @AppStorage("shake") private var shake = true
     @AppStorage("hk.toggle") private var hkToggle = ""
-    @State private var login = SMAppService.mainApp.status == .enabled || !UserDefaults.standard.bool(forKey: "onboarded")
+    @State private var login = SMAppService.mainApp.status == .enabled // off until the user turns it on
     @ObservedObject private var store = Store.shared
 
     private let steps = 5
@@ -177,6 +194,9 @@ struct OnboardingView: View {
                     }
                 }
                 Spacer()
+                if step == 0 {
+                    Button("Skip") { Windows.close("onboarding") }.controlSize(.large) // closing marks the tour as seen
+                }
                 if step > 0 && step < steps - 1 {
                     Button("Back") { go(step - 1) }.controlSize(.large)
                 }
@@ -229,7 +249,7 @@ struct OnboardingView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(LinearGradient(colors: [Color(hex: "#2B3A67"), Color(hex: "#151B33")], startPoint: .top, endPoint: .bottom))
-                HaloView(shape: shape, size: size, style: style, color: color, opacity: opacity)
+                HaloView(shape: shape, size: size, style: style, color: Paint.effective(color, "haloColor"), opacity: opacity)
                     .overlay(Image(systemName: "cursorarrow").font(.system(size: 26)).foregroundStyle(.white).shadow(radius: 2).offset(x: 6, y: 9))
             }
             .frame(height: 190)
@@ -245,10 +265,9 @@ struct OnboardingView: View {
                 }.pickerStyle(.segmented).labelsHidden()
                 HStack { Text("Size").foregroundStyle(.secondary); Slider(value: $size, in: 20...160) }
                 Swatches(key: "haloColor", hex: color).scaleEffect(1.25).padding(.top, 4)
-                Text("Gradients are part of Spotlit PRO. This is a 5-second preview.")
+                Text("Gradients are part of Spotlit PRO.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
-                    .opacity(color.hasPrefix("g:") && !store.isPro ? 1 : 0)
-                    .animation(.easeOut(duration: 0.2), value: color)
+                    .opacity(store.isPro ? 0 : 1)
             }
             .font(.system(size: 13))
         }
@@ -263,7 +282,7 @@ struct OnboardingView: View {
                 Divider()
                 OptionRow(icon: "hand.wave", title: "Shake to find the pointer", sub: "Shake the mouse and the halo grows.", on: $shake)
                 Divider()
-                OptionRow(icon: "power", title: "Open at login", sub: "Spotlit is ready when your Mac starts.", on: $login)
+                OptionRow(icon: "power", title: "Open at Login", sub: "Spotlit is ready when your Mac starts.", on: $login)
             }
             .padding(.horizontal, 14)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))

@@ -3,7 +3,7 @@ import ServiceManagement
 
 struct SettingsView: View {
     enum Tab: String, CaseIterable, Identifiable {
-        case general = "General", halo = "Halo", clicks = "Clicks", dim = "Spotlight Dim", keys = "Keystrokes"
+        case general = "General", halo = "Halo", clicks = "Clicks", dim = "Focus Dim", keys = "Keystrokes"
         case magnifier = "Magnifier", presets = "Presets", apps = "Apps", shortcuts = "Shortcuts", pro = "Spotlit PRO", about = "About"
         var id: Self { self }
         var icon: String {
@@ -88,7 +88,7 @@ struct GeneralPane: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Launch at login", isOn: Binding(get: { loginOn }, set: { on in
+                Toggle("Open at Login", isOn: Binding(get: { loginOn }, set: { on in
                     try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                     loginOn = SMAppService.mainApp.status == .enabled
                     if on && SMAppService.mainApp.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
@@ -122,7 +122,7 @@ struct HaloPane: View {
             Section {
                 HStack {
                     Spacer()
-                    HaloView(shape: shape, size: size, style: style, color: color, opacity: opacity)
+                    HaloView(shape: shape, size: size, style: style, color: Paint.effective(color, "haloColor"), opacity: opacity)
                         .overlay(Image(systemName: "cursorarrow").font(.system(size: 22)).offset(x: 6, y: 8))
                         .frame(height: 180) // largest size (160) plus its shadow
                     Spacer()
@@ -153,7 +153,7 @@ struct HaloPane: View {
             }
             Section("Color") {
                 Swatches(key: "haloColor", hex: color)
-                ColorPicker("Custom color", selection: Binding(get: { Paint.base(color) }, set: { color = $0.hex }), supportsOpacity: false)
+                CustomColor(hex: $color)
             }
         }
     }
@@ -171,15 +171,15 @@ struct ClicksPane: View {
                 Toggle("Show clicks", isOn: $clicksOn)
                 LabeledContent("Effect") { ClickEffectPicker(value: clickAnim) }
             } footer: {
-                Text("Pulse, Shrink and Glitter are part of PRO.")
+                Text("Pulse, Shrink, Glitter, gradients and custom colors are part of PRO.")
             }
             Section("Left click") {
                 Swatches(key: "leftColor", hex: left)
-                ColorPicker("Custom color", selection: Binding(get: { Paint.base(left) }, set: { left = $0.hex }), supportsOpacity: false)
+                CustomColor(hex: $left)
             }
             Section("Right click") {
                 Swatches(key: "rightColor", hex: right)
-                ColorPicker("Custom color", selection: Binding(get: { Paint.base(right) }, set: { right = $0.hex }), supportsOpacity: false)
+                CustomColor(hex: $right)
             }
         }
     }
@@ -190,14 +190,15 @@ struct DimPane: View {
     @AppStorage("dimAmount") private var amount = 0.55
     @AppStorage("dimSize") private var size = 170.0
     @AppStorage("hk.dim") private var hk = ""
+    @ObservedObject private var store = Store.shared
 
     var body: some View {
         Form {
             ProBanner(text: "Dim the screen and keep a bright circle around the pointer.")
             Section {
-                Toggle("Spotlight Dim", isOn: proBinding("dimOn", "Spotlight Dim"))
+                Toggle("Focus Dim", isOn: proBinding("dimOn"))
                 Slider(value: $amount, in: 0.2...0.85) { Text("Dim amount") }
-                Slider(value: $size, in: 80...400) { Text("Spotlight size") }
+                Slider(value: $size, in: 80...400) { Text("Focus size") }
             } footer: {
                 Text("Shortcut: \(HotKeys.label(value: hk))")
             }
@@ -211,12 +212,13 @@ struct KeysPane: View {
     @AppStorage("keysPos") private var pos = "bottom"
     @AppStorage("keysSize") private var size = 24.0
     @ObservedObject private var keyTap = KeyTap.shared
+    @ObservedObject private var store = Store.shared
 
     var body: some View {
         Form {
             ProBanner(text: "Show the keys you press as clear keycaps. Good for tutorials and recordings.")
             Section {
-                Toggle("Show keystrokes", isOn: proBinding("keysOn", "Keystrokes"))
+                Toggle("Show keystrokes", isOn: proBinding("keysOn"))
                 Picker("Show", selection: $mode) {
                     Text("All keys").tag("all")
                     Text("Shortcuts only").tag("shortcuts")
@@ -251,13 +253,14 @@ struct MagnifierPane: View {
     @AppStorage("magShape") private var shape = "circle"
     @AppStorage("hk.mag") private var hk = ""
     @State private var allowed = Overlay.shared.magnifier.allowed
+    @ObservedObject private var store = Store.shared
 
     var body: some View {
         Form {
             ProBanner(text: "Zoom in on the area under the pointer, anywhere on screen.")
             Section {
-                Toggle("Magnifier", isOn: proBinding("magOn", "Magnifier"))
-                if magOn && !allowed {
+                Toggle("Magnifier", isOn: proBinding("magOn"))
+                if store.on("magOn") && !allowed {
                     LabeledContent("Screen Recording") { Button("Allow…") { Overlay.shared.magnifier.request() } }
                 }
                 Slider(value: $zoom, in: 1.5...6, step: 0.5) { Text(String(format: "Zoom %.1f×", zoom)) }
@@ -267,7 +270,7 @@ struct MagnifierPane: View {
                     Text("Rounded").tag("rounded")
                 }.pickerStyle(.segmented)
             } footer: {
-                Text("The magnifier needs Screen Recording permission. macOS asks the first time you turn it on. After you allow it, quit and reopen Spotlit. Shortcut: \(HotKeys.label(value: hk))")
+                Text("The magnifier needs Screen Recording permission. macOS asks the first time you turn it on. After you allow it, quit and reopen Spotlit. It only shows the screen in the lens: nothing is saved or sent. While it is on, macOS shows a purple recording indicator in the menu bar. Shortcut: \(HotKeys.label(value: hk))")
             }
         }
         .onReceive(Overlay.shared.magnifier.$allowed) { allowed = $0 }
@@ -388,7 +391,7 @@ struct ShortcutsPane: View {
                 Text("\(store.isPro ? "" : "Changing shortcuts is part of PRO. ")Click a shortcut, then press the new keys. Each shortcut needs ⌃ Control, or ⌥ Option with ⌘ Command. This keeps typing and app shortcuts like ⌘C working. Press Delete to clear a shortcut.")
             }
             Section {
-                Toggle(isOn: proBinding("holdMode", "Hold-Key Mode")) {
+                Toggle(isOn: proBinding("holdMode")) {
                     HStack { Text("Show effects only while holding ⌥ Option"); if !store.isPro { ProBadge() } }
                 }
             } footer: {
@@ -403,12 +406,12 @@ struct ProPane: View {
     var body: some View {
         Form {
             Section {
-                if store.isPro {
+                if store.purchased {
                     Label("PRO is unlocked. Thank you for your support.", systemImage: "checkmark.seal.fill")
                         .foregroundStyle(.green)
                 } else {
                     ProFeatureList()
-                    Button("Unlock PRO\(store.price.map { " · \($0)" } ?? "")") { Task { await store.buy() } }
+                    Button(store.trialUsed ? "Unlock PRO\(store.price.map { " · \($0)" } ?? "")" : "Start 3-Day Free Trial…") { Windows.paywall() }
                         .buttonStyle(.borderedProminent).tint(Color(hex: "#F5A000")).disabled(store.busy)
                 }
             }
@@ -436,6 +439,24 @@ struct AboutPane: View {
             Section {
                 LabeledContent("Privacy", value: "No data collected. Everything stays on this Mac.")
                 LabeledContent("Made by", value: "Kshitij Koranne")
+                Link("Privacy Policy", destination: URL(string: "https://spotlit.kjrlabs.in/privacy")!)
+                Link("Support", destination: URL(string: "https://spotlit.kjrlabs.in/support")!)
+            }
+        }
+    }
+}
+
+/// Any color from the system color panel. PRO: without it the well is off and Unlock opens the paywall.
+struct CustomColor: View {
+    @Binding var hex: String
+    @ObservedObject private var store = Store.shared
+    var body: some View {
+        HStack {
+            ColorPicker("Custom color", selection: Binding(get: { Paint.base(hex) }, set: { hex = $0.hex }), supportsOpacity: false)
+                .disabled(!store.isPro)
+            if !store.isPro {
+                ProBadge()
+                Button("Unlock") { Windows.paywall() }.buttonStyle(.link)
             }
         }
     }
@@ -443,11 +464,11 @@ struct AboutPane: View {
 
 struct ProFeatureList: View {
     static let items: [(String, String, String)] = [
-        ("circle.lefthalf.filled", "Spotlight Dim", "Dim the screen around the pointer"),
+        ("circle.lefthalf.filled", "Focus Dim", "Dim the screen around the pointer"),
         ("keyboard", "Keystrokes", "Show the keys you press"),
         ("plus.magnifyingglass", "Magnifier", "Zoom in where you point"),
         ("sparkle", "Glitter and more clicks", "Glitter, Pulse and Shrink"),
-        ("paintpalette", "Exclusive colors", "Sunset, Aurora, Ocean, Candy, Prism"),
+        ("paintpalette", "Exclusive colors", "Gradients and any custom color"),
         ("square.stack", "Presets", "Switch setups in one click"),
         ("app.badge", "Auto-on per app", "Turns on with Zoom, Keynote and more"),
         ("command", "Hold-key mode and shortcuts", "Your keys, your way"),

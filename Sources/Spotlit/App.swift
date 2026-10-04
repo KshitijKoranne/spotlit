@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 
 @main
 struct SpotlitApp: App {
@@ -24,16 +25,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "hk.keys": "40,6144,⌃⌥K", "hk.mag": "6,6144,⌃⌥Z",
         ]) { a, _ in a })
         NSApp.setActivationPolicy(.accessory)
+        // Unit tests run inside the app: no tour, overlay or shortcuts.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        Review.countLaunch()
         Store.shared.start()
         Overlay.shared.start()
         AutoOn.shared.start()
         HotKeys.reload()
         Onboarding.showIfNeeded()
-        if UserDefaults.standard.bool(forKey: "openSettings") { Windows.settings() } // launch arg for screenshots
+    }
+
+    /// Opening Spotlit again from Finder or Launchpad shows Settings, since it has no Dock icon.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        Windows.settings()
+        return false
+    }
+}
+
+/// Asks for a rating once, after 5 launches and 3 days since the first.
+@MainActor
+enum Review {
+    static func countLaunch() {
+        let d = UserDefaults.standard
+        if d.object(forKey: "firstLaunch") == nil { d.set(Date(), forKey: "firstLaunch") }
+        d.set(d.integer(forKey: "launches") + 1, forKey: "launches")
+    }
+
+    static func askIfDue(in vc: NSViewController?) {
+        let d = UserDefaults.standard
+        guard let vc, !d.bool(forKey: "reviewAsked"), d.integer(forKey: "launches") >= 5,
+              let first = d.object(forKey: "firstLaunch") as? Date, Date().timeIntervalSince(first) >= 3 * 24 * 3600 else { return }
+        d.set(true, forKey: "reviewAsked")
+        AppStore.requestReview(in: vc) // StoreKit decides whether it really shows
     }
 }
 
 /// Settings the presets save and restore.
+@MainActor
 enum Presets {
     static let keys = ["haloMode", "shape", "size", "haloStyle", "haloColor", "opacity", "clicksOn", "leftColor",
                        "rightColor", "clickAnim", "dimOn", "dimAmount", "dimSize", "keysOn", "keysMode",
@@ -68,12 +96,9 @@ enum Presets {
         UserDefaults.standard.set(name, forKey: "preset")
     }
 
-    /// User choice: PRO presets get a live preview first.
+    /// User choice: presets other than Default need PRO.
     static func choose(_ name: String) {
-        guard var v = values(name) else { return }
-        if name == "Default" || Store.shared.isPro { Store.shared.endPreview(revert: true); return apply(name) }
-        v["preset"] = name
-        Store.shared.preview("\(name) Preset", v)
+        if name == "Default" || Store.shared.allow() { apply(name) }
     }
 
     static func next() {
@@ -114,13 +139,18 @@ enum Presets {
 }
 
 /// Plain AppKit windows so an accessory app can open them from anywhere.
+@MainActor
 enum Windows {
     private static var open: [String: NSWindow] = [:]
     /// Closed windows leave the cache, so the next show builds a fresh view and the old one is freed.
-    private static let closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: nil) { n in
-        guard let w = n.object as? NSWindow, let id = open.first(where: { $0.value === w })?.key else { return }
-        open[id] = nil
-        DispatchQueue.main.async { withExtendedLifetime(w) {} } // free it after AppKit and SwiftUI finish the close
+    private static let closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { n in
+        let w = n.object as? NSWindow
+        MainActor.assumeIsolated {
+            guard let w, let id = open.first(where: { $0.value === w })?.key else { return }
+            open[id] = nil
+            if id == "onboarding" { UserDefaults.standard.set(true, forKey: "onboarded") } // closed or finished: don't show again
+            DispatchQueue.main.async { withExtendedLifetime(w) {} } // free it after AppKit and SwiftUI finish the close
+        }
     }
 
     static func show<V: View>(_ id: String, title: String, transparent: Bool = false, _ view: V) {
@@ -145,9 +175,12 @@ enum Windows {
 
     static func close(_ id: String) { open[id]?.close() }
     static func isOpen(_ id: String) -> Bool { open[id]?.isVisible == true }
-    static func settings() { show("settings", title: "Spotlit Settings", SettingsView()) }
+    static func settings() {
+        show("settings", title: "Spotlit Settings", SettingsView())
+        Review.askIfDue(in: open["settings"]?.contentViewController)
+    }
     static func paywall() {
-        Task { await Store.shared.load() }
+        Task { await Store.shared.refresh(); await Store.shared.load() }
         show("pro", title: "Spotlit PRO", transparent: true, PaywallView())
     }
 }
@@ -160,6 +193,7 @@ extension Color {
 
     var hex: String {
         let c = NSColor(self).usingColorSpace(.sRGB) ?? .orange
-        return String(format: "#%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
+        func byte(_ v: CGFloat) -> Int { Int((min(max(v, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(c.redComponent), byte(c.greenComponent), byte(c.blueComponent))
     }
 }

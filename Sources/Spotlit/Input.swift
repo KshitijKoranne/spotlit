@@ -3,12 +3,15 @@ import Carbon.HIToolbox
 
 /// Global shortcuts via Carbon hot keys. They need no permission.
 /// Stored as "keyCode,carbonModifiers,label", e.g. "1,6144,⌃⌥S".
+@MainActor
 enum HotKeys {
     static let names = ["toggle", "next", "dim", "keys", "mag"]
-    static let titles = ["Turn Spotlit on or off", "Next preset", "Spotlight Dim", "Keystrokes", "Magnifier"]
+    static let titles = ["Turn Spotlit on or off", "Next preset", "Focus Dim", "Keystrokes", "Magnifier"]
     private static let sig: OSType = 0x5350_4C54 // "SPLT"
     private static var refs: [EventHotKeyRef] = []
     private static var installed = false
+    /// Stored values macOS refused to register, e.g. taken by another app since they were set.
+    private static var failed: Set<String> = []
 
     static func reload() {
         pause()
@@ -17,17 +20,20 @@ enum HotKeys {
             installed = InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
                 var id = EventHotKeyID()
                 guard GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
-                                        nil, MemoryLayout<EventHotKeyID>.size, nil, &id) == noErr,
-                      id.signature == HotKeys.sig, HotKeys.names.indices.contains(Int(id.id)) else { return OSStatus(eventNotHandledErr) }
-                HotKeys.fire(Int(id.id))
-                return noErr
+                                        nil, MemoryLayout<EventHotKeyID>.size, nil, &id) == noErr else { return OSStatus(eventNotHandledErr) }
+                return MainActor.assumeIsolated { // Carbon calls on the main thread
+                    guard id.signature == HotKeys.sig, HotKeys.names.indices.contains(Int(id.id)) else { return OSStatus(eventNotHandledErr) }
+                    HotKeys.fire(Int(id.id))
+                    return noErr
+                }
             }, 1, &spec, nil, nil) == noErr
         }
+        failed = []
         for (i, name) in names.enumerated() {
             guard let k = parse(name) else { continue }
             var ref: EventHotKeyRef?
-            RegisterEventHotKey(k.code, k.mods, EventHotKeyID(signature: sig, id: UInt32(i)), GetApplicationEventTarget(), 0, &ref)
-            if let ref { refs.append(ref) }
+            let status = RegisterEventHotKey(k.code, k.mods, EventHotKeyID(signature: sig, id: UInt32(i)), GetApplicationEventTarget(), 0, &ref)
+            if status == noErr, let ref { refs.append(ref) } else { failed.insert(UserDefaults.standard.string(forKey: "hk.\(name)") ?? "") }
         }
     }
 
@@ -37,10 +43,10 @@ enum HotKeys {
         refs = []
     }
 
-    /// Same parse as `reload`, so "None" shows exactly when nothing is registered.
-    static func label(_ name: String) -> String { parse(name)?.label ?? "None" }
+    /// Same parse as `reload`, so "None" shows exactly when nothing is registered, "Unavailable" when macOS refused it.
+    static func label(_ name: String) -> String { label(value: UserDefaults.standard.string(forKey: "hk.\(name)") ?? "") }
     /// For views that keep the stored value in @AppStorage, so they redraw when the shortcut changes.
-    static func label(value: String) -> String { parse(value: value)?.label ?? "None" }
+    static func label(value: String) -> String { failed.contains(value) ? "Unavailable" : parse(value: value)?.label ?? "None" }
 
     private static func parse(_ name: String) -> (code: UInt32, mods: UInt32, label: String)? {
         parse(value: UserDefaults.standard.string(forKey: "hk.\(name)") ?? "")
@@ -92,13 +98,15 @@ enum HotKeys {
 
     private static func fire(_ i: Int) {
         let d = UserDefaults.standard
-        func flip(_ key: String, _ label: String) { Store.shared.set(key, !d.bool(forKey: key), label: label) }
+        func flip(_ key: String) { d.set(!d.bool(forKey: key), forKey: key) }
+        if names[i] == "toggle" { return flip("enabled") }
+        // PRO keys only beep without PRO: a paywall must not take focus while someone presents.
+        guard Store.shared.isPro else { return NSSound.beep() }
         switch names[i] {
-        case "toggle": d.set(!d.bool(forKey: "enabled"), forKey: "enabled")
         case "next": Presets.next()
-        case "dim": flip("dimOn", "Spotlight Dim")
-        case "keys": flip("keysOn", "Keystrokes")
-        default: flip("magOn", "Magnifier")
+        case "dim": flip("dimOn")
+        case "keys": flip("keysOn")
+        default: flip("magOn")
         }
     }
 }
@@ -120,7 +128,7 @@ struct ShortcutRecorder: View {
 
     var body: some View {
         Button {
-            guard Store.shared.isPro else { return Windows.paywall() }
+            guard Store.shared.allow() else { return }
             recording ? stop() : start()
         } label: {
             Text(note ?? (recording ? "Type shortcut…" : (value.isEmpty ? "None" : HotKeys.label(name))))
@@ -177,6 +185,7 @@ struct ShortcutRecorder: View {
 }
 
 /// Keystrokes via a listen-only event tap. Needs Input Monitoring, which sandboxed App Store apps may use.
+@MainActor
 final class KeyTap: ObservableObject {
     static let shared = KeyTap()
     @Published private(set) var allowed = CGPreflightListenEventAccess()
@@ -202,8 +211,7 @@ final class KeyTap: ObservableObject {
     func start() {
         wanted = true
         guard tap == nil, poll == nil else { return }
-        // A free preview never prompts; the paywall opens instead (Store.set).
-        if Store.shared.isPro, !UserDefaults.standard.bool(forKey: "askedKeys"), !CGPreflightListenEventAccess() { request() } else { check() }
+        if !UserDefaults.standard.bool(forKey: "askedKeys"), !CGPreflightListenEventAccess() { request() } else { check() }
     }
 
     func stop() {
@@ -222,10 +230,12 @@ final class KeyTap: ObservableObject {
             tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly,
                                     eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
                                     callback: { _, type, event, _ in
-                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                    if let t = KeyTap.shared.tap { CGEvent.tapEnable(tap: t, enable: true) }
-                } else if let e = NSEvent(cgEvent: event) {
-                    KeyTap.shared.onKey?(e)
+                MainActor.assumeIsolated { // the tap's source is on the main run loop
+                    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                        if let t = KeyTap.shared.tap { CGEvent.tapEnable(tap: t, enable: true) }
+                    } else if let e = NSEvent(cgEvent: event) {
+                        KeyTap.shared.onKey?(e)
+                    }
                 }
                 return Unmanaged.passUnretained(event)
             }, userInfo: nil)
@@ -243,7 +253,16 @@ final class KeyTap: ObservableObject {
             poll = nil
             asking = false
         } else if poll == nil {
-            poll = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in self?.check() }
+            poll = repeating(1.5) { [weak self] in self?.check() }
         }
     }
+}
+
+/// A main-thread timer that also fires while a menu or slider is tracking, with tolerance so macOS can batch wake-ups.
+@MainActor
+func repeating(_ seconds: TimeInterval, _ f: @escaping @MainActor () -> Void) -> Timer {
+    let t = Timer(timeInterval: seconds, repeats: true) { _ in MainActor.assumeIsolated(f) }
+    t.tolerance = seconds / 5
+    RunLoop.main.add(t, forMode: .common)
+    return t
 }

@@ -34,7 +34,7 @@ struct MenuView: View {
         }
         .padding(14)
         .frame(width: 580)
-        .task { await store.load() } // shows the real price if launch had no network
+        .task { await store.refresh(); await store.load() } // trial end, and the real price if launch had no network
         .onReceive(Overlay.shared.magnifier.$allowed) { magAllowed = $0 }
     }
 
@@ -43,7 +43,7 @@ struct MenuView: View {
             AppMark(size: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Spotlit").font(.system(size: 14, weight: .semibold))
-                Text(store.previewing.map { "Previewing \($0)" } ?? (enabled ? (hkToggle.isEmpty ? "On" : "On · \(HotKeys.label(value: hkToggle))") : "Off"))
+                Text(enabled ? (hkToggle.isEmpty ? "On" : "On · \(HotKeys.label(value: hkToggle))") : "Off")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
@@ -97,19 +97,19 @@ struct MenuView: View {
     }
 
     private var dimCard: some View {
-        Card(title: "Spotlight Dim", icon: "circle.lefthalf.filled", isOn: proBinding("dimOn", "Spotlight Dim"), pro: true) {
+        Card(title: "Focus Dim", icon: "circle.lefthalf.filled", isOn: proBinding("dimOn"), pro: true) {
             Row(title: "Amount") { Slider(value: $dimAmount, in: 0.2...0.85) }
             Row(title: "Size") { Slider(value: $dimSize, in: 80...400) }
         }
     }
 
     private var keysCard: some View {
-        Card(title: "Keystrokes", icon: "keyboard", isOn: proBinding("keysOn", "Keystrokes"), pro: true) {
+        Card(title: "Keystrokes", icon: "keyboard", isOn: proBinding("keysOn"), pro: true) {
             Picker("Keys", selection: $keysMode) {
                 Text("All keys").tag("all")
                 Text("Shortcuts only").tag("shortcuts")
             }.pickerStyle(.segmented).labelsHidden()
-            if keysOn && !keyTap.allowed {
+            if store.on("keysOn") && !keyTap.allowed {
                 Button("Allow Input Monitoring…") { keyTap.request() }
                     .controlSize(.small)
             }
@@ -117,13 +117,13 @@ struct MenuView: View {
     }
 
     private var magCard: some View {
-        Card(title: "Magnifier", icon: "plus.magnifyingglass", isOn: proBinding("magOn", "Magnifier"), pro: true) {
+        Card(title: "Magnifier", icon: "plus.magnifyingglass", isOn: proBinding("magOn"), pro: true) {
             Row(title: "Zoom") {
                 Slider(value: $magZoom, in: 1.5...6, step: 0.5)
                 Text(String(format: "%.1f×", magZoom)).monospacedDigit().foregroundStyle(.secondary).frame(width: 34, alignment: .trailing)
             }
             Row(title: "Lens") { Slider(value: $magSize, in: 120...360) }
-            if magOn && !magAllowed {
+            if store.on("magOn") && !magAllowed {
                 Button("Allow Screen Recording…") { Overlay.shared.magnifier.request() }
                     .controlSize(.small)
             }
@@ -132,7 +132,7 @@ struct MenuView: View {
 
     private var footer: some View {
         HStack {
-            if !store.isPro {
+            if !store.purchased {
                 Button { Windows.paywall() } label: {
                     Label("Unlock PRO\(store.price.map { " · \($0)" } ?? "")", systemImage: "sparkles")
                 }
@@ -203,7 +203,7 @@ struct Row<Content: View>: View {
     }
 }
 
-/// Free colors, then PRO gradients. Choosing a gradient without PRO starts a preview.
+/// Free colors, then PRO gradients. Choosing a gradient without PRO opens the paywall.
 // ponytail: no NSColorPanel in the menu; the menu window closes when the panel takes focus.
 struct Swatches: View {
     let key: String
@@ -213,13 +213,14 @@ struct Swatches: View {
     var body: some View {
         HStack(spacing: 5) {
             ForEach(Paint.free + Paint.pro, id: \.self) { c in
+                let on = Paint.effective(hex, key) == c
                 Button {
-                    c.hasPrefix("g:") ? store.preview("Exclusive Colors", [key: c]) : UserDefaults.standard.set(c, forKey: key)
+                    if !c.hasPrefix("g:") || store.allow() { UserDefaults.standard.set(c, forKey: key) }
                 } label: {
                     Circle()
                         .fill(Paint.style(c))
                         .frame(width: 15, height: 15)
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(hex == c ? 0.85 : 0.15), lineWidth: hex == c ? 2 : 1))
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(on ? 0.85 : 0.15), lineWidth: on ? 2 : 1))
                         .overlay(alignment: .topTrailing) {
                             if c.hasPrefix("g:") && !store.isPro {
                                 Image(systemName: "lock.fill").font(.system(size: 6)).foregroundStyle(.white)
@@ -236,9 +237,10 @@ struct Swatches: View {
 
 struct ClickEffectPicker: View {
     let value: String
+    @ObservedObject private var store = Store.shared
     var body: some View {
-        Picker("Effect", selection: Binding(get: { value }, set: { v in
-            v == "ripple" ? UserDefaults.standard.set(v, forKey: "clickAnim") : Store.shared.preview("Click Effects", ["clickAnim": v])
+        Picker("Effect", selection: Binding(get: { store.isPro ? value : "ripple" }, set: { v in
+            if v == "ripple" || store.allow() { UserDefaults.standard.set(v, forKey: "clickAnim") }
         })) {
             Text("Ripple").tag("ripple")
             Text("Pulse ✦").tag("pulse")
