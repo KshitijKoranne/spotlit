@@ -17,6 +17,8 @@ targets:
       - Sources/AppIcon.icon
       - path: Spotlit.storekit
         buildPhase: none
+      - path: Sources/PrivacyInfo.xcprivacy
+        buildPhase: resources
     info:
       path: Sources/Info.plist
       properties:
@@ -24,6 +26,7 @@ targets:
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.utilities
         NSHumanReadableCopyright: "© 2026 Kshitij Koranne"
+        ITSAppUsesNonExemptEncryption: false
     entitlements:
       path: Sources/Spotlit.entitlements
       properties:
@@ -31,14 +34,31 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: in.kjrlabs.spotlit
+        DEVELOPMENT_TEAM: AA2WGR36B2
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
+  SpotlitTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+      - path: Spotlit.storekit
+        buildPhase: resources
+    dependencies:
+      - target: Spotlit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: in.kjrlabs.spotlit.tests
 schemes:
   Spotlit:
     build:
       targets:
         Spotlit: all
+    test:
+      targets:
+        - SpotlitTests
     run:
       config: Debug
       storeKitConfiguration: Spotlit.storekit

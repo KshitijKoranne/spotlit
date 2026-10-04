@@ -3,6 +3,7 @@
 # For the App Store and for testing purchases: open Spotlit.xcodeproj in Xcode and press ⌘R.
 set -e
 cd "$(dirname "$0")"
+xattr -cr . # Finder and download tags break code signing
 xcodegen generate --quiet
 xcodebuild -project Spotlit.xcodeproj -scheme Spotlit -configuration Debug -derivedDataPath .build \
   CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -quiet build
