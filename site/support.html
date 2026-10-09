@@ -5,37 +5,38 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Spotlit — Support</title>
 <meta name="description" content="Support and frequently asked questions for Spotlit, a menu-bar mouse pointer highlighter for the Mac.">
-<meta name="color-scheme" content="light dark">
+<link rel="icon" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&family=Big+Shoulders+Display:wght@900&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#05152F">
 <style>
-:root{--bg:#fff;--fg:#1d1d1f;--mute:#6e6e73;--line:#e5e5ea;--accent:#F5A000}
-@media (prefers-color-scheme:dark){:root{--bg:#161618;--fg:#f2f2f4;--mute:#9a9aa1;--line:#2c2c30}}
+:root{color-scheme:dark;--amber:#FFB020;--light:#FFF3D6;--haze:#8C9BBA;--line:rgba(255,255,255,.09)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
-main{max-width:680px;margin:0 auto;padding:48px 20px 64px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:600;margin-bottom:36px}
-.brand i{width:12px;height:12px;border-radius:50%;background:var(--accent);display:inline-block}
-.brand a{color:inherit;text-decoration:none}
-h1{font-size:28px;line-height:1.25;margin:0 0 6px}
-h2{font-size:18px;margin:32px 0 6px}
-p,ul{margin:0 0 12px}
-ul{padding-left:20px}
-li{margin-bottom:6px}
-.meta{color:var(--mute);margin-bottom:28px}
-a{color:inherit;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:3px}
-code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--line);padding:1px 5px;border-radius:4px;word-break:break-all}
-footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--mute);font-size:14px}
-footer a{margin-right:14px}
+body{margin:0;background:#05152F;color:var(--light);font:17px/1.65 "Atkinson Hyperlegible Next","Atkinson Hyperlegible",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration-color:var(--amber);text-decoration-thickness:2px;text-underline-offset:4px}
+:focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:4px}
+.mb{position:sticky;top:0;display:flex;gap:4px;align-items:center;height:32px;padding:0 10px;font-size:14px;background:rgba(5,21,47,.7);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--line)}
+.mb a{padding:3px 9px;border-radius:5px;text-decoration:none}.mb a:hover{background:rgba(255,255,255,.12)}.mb b a{font-weight:700}
+main{max-width:720px;margin:0 auto;padding:64px 20px 80px}
+h1{margin:0 0 4px;font:900 clamp(56px,10vw,96px)/.9 "Big Shoulders Display",Impact,sans-serif;text-transform:uppercase}
+h2{margin:34px 0 6px;font-size:19px}
+p,ul{margin:0 0 12px;max-width:66ch}
+ul{padding-left:20px}li{margin-bottom:8px}
+.meta{color:var(--haze);margin-bottom:30px}
+code{font:15px ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px;word-break:break-all}
+footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);color:var(--haze);font-size:14px;display:flex;gap:18px}
 </style>
 </head>
 <body>
+<nav class="mb"><b><a href="/">Spotlit</a></b><a href="/support">Support</a><a href="/privacy">Privacy</a></nav>
 <main>
-<div class="brand"><i></i><a href="/">Spotlit</a></div>
 <h1>Support</h1>
 <p class="meta">Spotlit for Mac</p>
 <p>Spotlit lives in your menu bar and puts a highlight around your mouse pointer, so people can follow it during screen shares, recordings and presentations. PRO adds extras such as keystroke display and a magnifier.</p>
 <h2>Contact</h2>
 <p>Write to <a href="mailto:kjrlabs9@gmail.com">kjrlabs9@gmail.com</a>. I usually reply within 2 working days.</p>
-<h2>Questions</h2>
 <h2>How do I open Spotlit?</h2>
 <p>Click the Spotlit icon in the menu bar. If you open the app again from Applications, it shows the Settings window.</p>
 <h2>Is there a shortcut to turn it on and off?</h2>
@@ -52,7 +53,7 @@ footer a{margin-right:14px}
 <p>Refunds are handled by Apple. Request one at <a href="https://reportaproblem.apple.com">reportaproblem.apple.com</a>.</p>
 <h2>How do I uninstall it?</h2>
 <p>Quit Spotlit and move it to the Bin. Its settings are in <code>~/Library/Containers/in.kjrlabs.spotlit</code>.</p>
-<footer><a href="/privacy">Privacy</a><a href="/support">Support</a></footer>
+<footer><a href="/">Spotlit</a><a href="/privacy">Privacy</a><a href="/support">Support</a><a href="mailto:kjrlabs9@gmail.com">Contact</a></footer>
 </main>
 </body>
 </html>

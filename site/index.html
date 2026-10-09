@@ -2,38 +2,497 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Spotlit</title>
-<meta name="description" content="Spotlit, a menu-bar mouse pointer highlighter for the Mac.">
-<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Spotlit: a pointer highlighter for Mac</title>
+<meta name="description" content="Spotlit puts a soft halo around your Mac's mouse pointer, so people can follow it in calls, recordings, lessons and demos. Free, with a one-time PRO unlock.">
+<meta name="theme-color" content="#05152F">
+<meta property="og:title" content="Spotlit: a pointer highlighter for Mac">
+<meta property="og:description" content="A soft halo around your pointer, click ripples, keystrokes and Focus Dim. Lives in the menu bar.">
+<meta property="og:image" content="https://spotlit.kjrlabs.in/og.jpg">
+<meta property="og:url" content="https://spotlit.kjrlabs.in/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="apple-itunes-app" content="app-id=6819035580">
+<link rel="icon" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;700&family=Big+Shoulders+Display:wght@700;900&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#fff;--fg:#1d1d1f;--mute:#6e6e73;--line:#e5e5ea;--accent:#F5A000}
-@media (prefers-color-scheme:dark){:root{--bg:#161618;--fg:#f2f2f4;--mute:#9a9aa1;--line:#2c2c30}}
+:root{
+  --night:#05152F; --deep:#0B2350; --pane:#0D1E3D; --row:#132A52;
+  --amber:#FFB020; --blue:#0A84FF; --light:#FFF3D6; --haze:#8C9BBA; --ghost:#1F3462;
+  --line:rgba(255,255,255,.09);
+  --hc:#FFB020; --hs:64px; --da:.6; --dr:220px; --px:50vw; --py:40vh;
+  --display:"Big Shoulders Display",Impact,sans-serif;
+  --text:"Atkinson Hyperlegible Next","Atkinson Hyperlegible",system-ui,sans-serif;
+  color-scheme:dark;
+}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
-main{max-width:680px;margin:0 auto;padding:48px 20px 64px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:600;margin-bottom:36px}
-.brand i{width:12px;height:12px;border-radius:50%;background:var(--accent);display:inline-block}
-.brand a{color:inherit;text-decoration:none}
-h1{font-size:28px;line-height:1.25;margin:0 0 6px}
-h2{font-size:18px;margin:32px 0 6px}
-p,ul{margin:0 0 12px}
-ul{padding-left:20px}
-li{margin-bottom:6px}
-.meta{color:var(--mute);margin-bottom:28px}
-a{color:inherit;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:3px}
-code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--line);padding:1px 5px;border-radius:4px;word-break:break-all}
-footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--mute);font-size:14px}
-footer a{margin-right:14px}
+html{scroll-behavior:smooth;scroll-padding-top:44px}
+body{margin:0;background:linear-gradient(#05152F 0,#05152F 70vh,#071a3a 100%);color:var(--light);font:17px/1.6 var(--text);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:6px}
+img,video{display:block;max-width:100%}
+
+/* ---------- menu bar ---------- */
+.mb{position:fixed;inset:0 0 auto;height:32px;z-index:70;display:flex;align-items:center;gap:4px;padding:0 10px;font-size:14px;
+  background:rgba(5,21,47,.62);backdrop-filter:blur(22px) saturate(1.6);-webkit-backdrop-filter:blur(22px) saturate(1.6);border-bottom:1px solid var(--line)}
+.mb a,.mb button{all:unset;cursor:default;padding:3px 9px;border-radius:5px;white-space:nowrap}
+.mb a:hover,.mb button:hover,.mb [aria-expanded=true]{background:rgba(255,255,255,.12)}
+.mb a:focus-visible,.mb button:focus-visible{outline:2px solid var(--amber)}
+.mb .app{font-weight:700}
+.mb .sp{flex:1}
+.mb .extra{display:grid;place-items:center;padding:3px 8px}
+.mb .extra svg{width:16px;height:16px}
+.clock{padding:0 6px;color:var(--light);font-variant-numeric:tabular-nums}
+.menu{position:fixed;top:36px;right:10px;width:min(330px,calc(100vw - 20px));z-index:80;padding:12px;border-radius:14px;font-size:14px;
+  background:rgba(14,30,62,.86);backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8);
+  border:1px solid rgba(255,255,255,.14);box-shadow:0 24px 60px rgba(0,0,0,.55)}
+.menu[hidden]{display:none}
+.menu .top{display:flex;align-items:center;gap:10px;padding:2px 2px 12px;border-bottom:1px solid var(--line);margin-bottom:10px}
+.menu .top img{width:30px;height:30px;border-radius:7px}
+.menu .top b{display:block;line-height:1.2}
+.menu .top small{color:var(--haze)}
+.menu .top .sw{margin-left:auto}
+.menu .mrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 2px}
+.menu .seg button{padding:4px 8px;font-size:13px}
+.menu .foot{display:flex;gap:8px;margin-top:10px;padding-top:12px;border-top:1px solid var(--line)}
+.menu .foot a{flex:1;text-align:center;padding:6px;border-radius:7px;background:rgba(255,255,255,.1);text-decoration:none}
+.menu .foot a.go{background:var(--amber);color:#1b1100;font-weight:700}
+
+/* ---------- live effects ---------- */
+#halo{position:fixed;left:0;top:0;z-index:50;pointer-events:none;will-change:transform;transition:opacity .25s}
+#halo .h{width:var(--hs);height:var(--hs);margin:calc(var(--hs)/-2) 0 0 calc(var(--hs)/-2);border-radius:50%;
+  background:color-mix(in srgb,var(--hc) 40%,transparent);
+  box-shadow:0 0 0 1.5px color-mix(in srgb,var(--hc) 85%,transparent),0 0 30px color-mix(in srgb,var(--hc) 38%,transparent);
+  transform:scale(var(--k,1));transition:transform .35s cubic-bezier(.3,1.6,.5,1),border-radius .3s,width .15s,height .15s,margin .15s}
+#halo[data-shape=squircle] .h{border-radius:32%}
+#halo[data-shape=rhombus] .h{border-radius:16%;transform:rotate(45deg) scale(calc(var(--k,1)*.78))}
+#halo[data-style=ring] .h{background:transparent;box-shadow:inset 0 0 0 3px var(--hc),0 0 22px color-mix(in srgb,var(--hc) 45%,transparent)}
+#halo.off{opacity:0}
+.dim{position:fixed;inset:0;z-index:40;pointer-events:none;opacity:0;transition:opacity .35s;
+  background:radial-gradient(circle at var(--px) var(--py),transparent 0,transparent calc(var(--dr)*.42),rgba(2,8,22,var(--da)) var(--dr))}
+body.dimmed .dim{opacity:1}
+.fx{position:fixed;z-index:60;pointer-events:none;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;--c:var(--amber)}
+.fx.ripple{border:3px solid var(--c);animation:ripple .5s ease-out forwards}
+.fx.pulse{background:var(--c);animation:pulse .65s ease-out forwards}
+.fx.shrink{border:3px solid var(--c);animation:shrink .45s ease-in forwards}
+.fx.glitter i{position:absolute;left:50%;top:50%;width:7px;height:7px;margin:-3.5px;background:var(--c);transform:rotate(var(--a)) translateY(0) rotate(45deg);animation:spark .6s ease-out forwards}
+@keyframes ripple{from{transform:scale(.3);opacity:1}to{transform:scale(1.7);opacity:0}}
+@keyframes pulse{0%{transform:scale(.2);opacity:.65}40%{transform:scale(1);opacity:.35}55%{transform:scale(.7);opacity:.5}to{transform:scale(1.5);opacity:0}}
+@keyframes shrink{0%{transform:scale(2.3);opacity:0}30%{opacity:1}to{transform:scale(.1);opacity:0}}
+@keyframes spark{to{transform:rotate(var(--a)) translateY(-48px) rotate(45deg) scale(0)}}
+#keys{position:fixed;left:50%;bottom:28px;z-index:65;display:flex;gap:8px;transform:translateX(-50%);pointer-events:none;transition:opacity .3s}
+#keys:empty{opacity:0}
+.cap{display:inline-grid;place-items:center;min-width:1.9em;height:1.9em;padding:0 .5em;border-radius:.32em;font:600 1em/1 -apple-system,BlinkMacSystemFont,var(--text);
+  background:rgba(22,24,30,.88);color:#fff;border:1px solid rgba(255,255,255,.16);box-shadow:0 .12em 0 rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.35)}
+#keys .cap{font-size:22px}
+kbd.cap{font-size:.82em;vertical-align:.08em;box-shadow:0 .1em 0 rgba(0,0,0,.5)}
+
+/* ---------- hero ---------- */
+.hero{position:relative;min-height:100svh;padding:clamp(80px,12vh,140px) clamp(20px,5vw,72px) 48px;display:flex;flex-wrap:wrap;align-items:flex-end;align-content:center;gap:40px clamp(32px,5vw,80px);}
+.marquee{--lx:60%;--ly:70%;margin:0;display:grid;flex:none;font:900 max(64px,min(17vw,26vh))/.84 var(--display);text-transform:uppercase;letter-spacing:-.005em}
+.marquee>span{grid-area:1/1}
+.marquee .ghost{color:var(--ghost)}
+.marquee .lit{padding:40px;margin:-40px;color:var(--light);text-shadow:0 0 34px rgba(255,176,32,.5),0 0 4px rgba(255,220,150,.6);
+  -webkit-mask-image:radial-gradient(circle 300px at var(--lx) var(--ly),#000 30%,transparent 72%);
+          mask-image:radial-gradient(circle 300px at var(--lx) var(--ly),#000 30%,transparent 72%)}
+.desk{position:absolute;top:56px;right:clamp(16px,4vw,56px);width:92px;text-align:center;font-size:13px;text-decoration:none}
+.desk img{width:72px;height:72px;margin:0 auto 6px;border-radius:17px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.desk span{padding:1px 6px;border-radius:4px;background:rgba(10,132,255,.0)}
+.desk:hover span{background:var(--blue)}
+.below{flex:1 1 260px;max-width:440px;display:flex;flex-direction:column;gap:22px;padding-bottom:.6vh}
+.lede{max-width:34ch;margin:0;font-size:clamp(19px,2vw,24px);line-height:1.45}
+.get{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.get img{height:46px;width:auto}
+.badge-txt{display:inline-block;padding:11px 18px;border-radius:10px;background:#000;color:#fff;border:1px solid #a6a6a6;font-weight:700;font-size:15px;white-space:nowrap}
+.get p{margin:0;color:var(--haze);font-size:15px;line-height:1.4}
+.try{margin:12px 0 0;color:var(--haze);font-size:15px}
+.touch .mouse-only,.no-touch .touch-only{display:none}
+
+/* ---------- settings window ---------- */
+.stagewrap{padding:24px clamp(12px,4vw,56px) 40px}
+.win{max-width:1120px;margin:0 auto;border-radius:16px;background:var(--pane);border:1px solid rgba(255,255,255,.12);
+  box-shadow:0 40px 120px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.4)}
+.tbar{position:sticky;top:32px;z-index:5;height:46px;display:flex;align-items:center;gap:8px;padding:0 16px;border-radius:16px 16px 0 0;background:#0F2245;border-bottom:1px solid var(--line);font-weight:700;font-size:15px;color:#d9dfeb}
+.tbar i{width:12px;height:12px;border-radius:50%;background:#FF5F57}
+.tbar i:nth-child(2){background:#FEBC2E}.tbar i:nth-child(3){background:#28C840;margin-right:10px}
+.cols{display:grid;grid-template-columns:230px 1fr}
+.side{position:sticky;top:86px;align-self:start;padding:14px 10px;display:flex;flex-direction:column;gap:2px}
+.side a{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;text-decoration:none;font-size:16px;color:#d9dfeb}
+.side a svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;color:#aab6cf}
+.side a:hover{background:rgba(255,255,255,.06)}
+.side a.on{background:rgba(255,255,255,.12);color:#fff;font-weight:700}
+.side a.on svg{color:var(--amber)}
+.panes{border-left:1px solid var(--line);min-width:0}
+.pane{padding:44px clamp(18px,4vw,52px) 52px;border-bottom:1px solid var(--line)}
+.pane:last-child{border-bottom:0}
+.pane h2{margin:0 0 6px;font:700 clamp(40px,5vw,56px)/1 var(--display);letter-spacing:.005em}
+.pane h2 .pro{vertical-align:.5em;margin-left:10px}
+.pane>p{max-width:62ch;margin:0 0 26px;color:#c9d2e4}
+.group{border-radius:12px;background:var(--row);border:1px solid var(--line)}
+.r{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 16px;min-height:54px}
+.r+.r{border-top:1px solid var(--line)}
+.r>span:first-child:not(.grow){flex:none}
+.r .grow{min-width:0}
+.r small{display:block;color:var(--haze);font-size:14px;line-height:1.4}
+.r .grow{flex:1 1 auto}
+.pro{display:inline-block;padding:1px 6px;border-radius:5px;font:700 11px/1.5 var(--text);letter-spacing:.04em;color:#1b1100;background:var(--amber)}
+.free{display:inline-block;padding:1px 6px;border-radius:5px;font:700 11px/1.5 var(--text);letter-spacing:.04em;color:var(--haze);border:1px solid rgba(255,255,255,.18)}
+
+/* controls */
+.seg{display:inline-flex;flex-wrap:wrap;gap:2px;padding:2px;border-radius:8px;background:rgba(0,0,0,.28)}
+.seg button{all:unset;cursor:pointer;padding:5px 12px;border-radius:6px;font-size:15px;color:#c9d2e4}
+.seg button[aria-pressed=true]{background:#3A4D72;color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.4)}
+.seg button sup{font-size:10px;color:var(--amber);margin-left:2px}
+.sw{all:unset;cursor:pointer;flex:none;width:40px;height:24px;border-radius:12px;background:#3A4566;position:relative;transition:background .2s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4);transition:transform .2s}
+.sw[aria-checked=true]{background:var(--blue)}
+.sw[aria-checked=true]::after{transform:translateX(16px)}
+input[type=range]{width:min(260px,44vw);accent-color:var(--blue)}
+.dots{display:flex;flex-wrap:wrap;gap:10px}
+.dots button{all:unset;cursor:pointer;width:22px;height:22px;border-radius:50%;background:var(--v);box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
+.dots button[aria-pressed=true]{box-shadow:0 0 0 2px var(--pane),0 0 0 4px var(--v)}
+.spot{margin-top:18px;height:240px;border-radius:12px;display:grid;place-items:center;text-align:center;color:var(--haze);user-select:none;
+  border:1.5px dashed rgba(255,255,255,.18);background:radial-gradient(ellipse at 50% 120%,rgba(255,176,32,.14),transparent 60%)}
+.spot b{display:block;color:var(--light);font:700 34px/1.1 var(--display)}
+.keyview{margin-top:18px;height:160px;padding:0 20px;text-align:center;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:12px;background:rgba(0,0,0,.25);border:1px solid var(--line);color:var(--haze)}
+.keyview .cap{font-size:38px}
+.hint{margin:16px 0 0;color:var(--haze);font-size:15px}
+.cast .r{align-items:flex-start}
+.cast .r>span:first-child{flex:1}
+.cast b{font-weight:700}
+
+.plans{display:grid;grid-template-columns:1fr 1.25fr;gap:16px}
+.plan{border-radius:12px;padding:22px 22px 24px;background:var(--row);border:1px solid var(--line)}
+.plan.p{border:1.5px solid var(--amber);background:linear-gradient(160deg,rgba(255,176,32,.13),rgba(255,176,32,0) 55%),var(--row)}
+.plan h3{margin:0;font:700 22px/1.2 var(--text)}
+.price{margin:6px 0 14px;font:900 64px/1 var(--display)}
+.price small{font:500 16px var(--text);color:var(--haze);margin-left:6px}
+.plan ul{margin:0;padding:0;list-style:none}
+.plan li{padding:6px 0 6px 24px;position:relative;border-top:1px solid var(--line)}
+.plan li::before{content:"";position:absolute;left:2px;top:.85em;width:10px;height:10px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.buy{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;margin-top:22px}
+.buy img{height:46px;width:auto}
+.buy p{margin:0;color:var(--haze);font-size:15px;max-width:44ch}
+
+.about{display:grid;grid-template-columns:220px 1fr;gap:32px;align-items:start}
+.about video{width:220px;height:220px;border-radius:18px;object-fit:cover}
+.about h3{margin:0;font:900 56px/1 var(--display)}
+.about .ver{margin:4px 0 16px;color:var(--haze)}
+.about p{margin:0 0 12px;max-width:58ch}
+.links{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:14px}
+.links a{text-decoration-color:var(--amber);text-decoration-thickness:2px;text-underline-offset:4px}
+
+/* ---------- curtain ---------- */
+.end{padding:clamp(80px,14vh,160px) clamp(20px,5vw,72px) 40px;text-align:center}
+.end h2{margin:0;font:900 clamp(80px,16vw,240px)/.85 var(--display);text-transform:uppercase;color:var(--light);text-shadow:0 0 50px rgba(255,176,32,.45)}
+.end p{margin:18px auto 26px;max-width:40ch;font-size:20px}
+.end .get{justify-content:center}
+footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;padding:28px clamp(20px,5vw,72px) 40px;color:var(--haze);font-size:14px;border-top:1px solid var(--line);margin-top:80px}
+footer nav{display:flex;gap:18px}
+
+/* ---------- small screens ---------- */
+@media (max-width:820px){
+  .mb .wide{display:none}
+  .cols{grid-template-columns:minmax(0,1fr)}
+  .side{position:sticky;top:78px;z-index:4;flex-direction:row;overflow-x:auto;gap:4px;padding:8px;background:var(--pane);border-bottom:1px solid var(--line);scrollbar-width:none}
+  .side a{flex:none;font-size:15px;padding:6px 10px}
+  .side a svg{width:17px;height:17px}
+  .panes{border-left:0}
+  .tbar{top:32px}
+  .r{flex-wrap:wrap}
+  .plans,.about{grid-template-columns:1fr}
+  .desk{display:none}
+  #keys .cap{font-size:18px}
+}
+@media (max-width:600px){.marquee{font-size:25.5vw}.hero{align-content:space-between}}
+@media (max-width:480px){.clock{display:none}.seg button{padding:5px 9px;font-size:14px}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.fx{animation-duration:.01s!important}#halo .h{transition:none}}
 </style>
 </head>
 <body>
-<main>
-<div class="brand"><i></i><a href="/">Spotlit</a></div>
-<h1>Spotlit</h1>
-<p>A menu-bar mouse pointer highlighter for the Mac.</p>
-<p><a href="/support">Support</a> &nbsp;&middot;&nbsp; <a href="/privacy">Privacy Policy</a></p>
 
+<header class="mb">
+  <a class="app" href="#top">Spotlit</a>
+  <a class="wide" href="#halo-pane">Features</a>
+  <a class="wide" href="#pro">Pricing</a>
+  <a href="/support">Support</a>
+  <span class="sp"></span>
+  <a class="wide" href="https://apps.apple.com/app/spotlit-pointer-highlighter/id6819035580">App Store</a>
+  <button class="extra" id="extra" aria-expanded="false" aria-controls="menu" aria-label="Spotlit menu">
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.2l8.6 6.2-3.9.6 2.2 4.2-1.5.8-2.2-4.3L4 12.6z"/></svg>
+  </button>
+  <span class="clock" id="clock"></span>
+</header>
+
+<div class="menu" id="menu" hidden>
+  <div class="top">
+    <img src="/icon.png" alt="">
+    <span><b>Spotlit</b><small id="status">On</small></span>
+    <button class="sw" role="switch" data-t="on" aria-label="Spotlit on or off"></button>
+  </div>
+  <div class="mrow"><span>Shape</span>
+    <span class="seg"><button data-k="shape" data-v="circle">Circle</button><button data-k="shape" data-v="squircle">Squircle</button><button data-k="shape" data-v="rhombus">Rhombus</button></span></div>
+  <div class="mrow"><span>Size</span><input type="range" data-r="size" min="20" max="160" aria-label="Halo size"></div>
+  <div class="mrow"><span>Clicks</span><button class="sw" role="switch" data-t="clicks" aria-label="Show clicks"></button></div>
+  <div class="mrow"><span>Keystrokes <span class="pro">PRO</span></span><button class="sw" role="switch" data-t="keys" aria-label="Show keystrokes"></button></div>
+  <div class="mrow"><span>Focus Dim <span class="pro">PRO</span></span><button class="sw" role="switch" data-t="dim" aria-label="Focus Dim"></button></div>
+  <div class="foot"><a href="#halo-pane">Settings…</a><a class="go" href="https://apps.apple.com/app/spotlit-pointer-highlighter/id6819035580">Get Spotlit</a></div>
+</div>
+
+<div class="dim" aria-hidden="true"></div>
+<div id="halo" aria-hidden="true"><div class="h"></div></div>
+<div id="keys" aria-hidden="true"></div>
+
+<main>
+<section class="hero" id="top">
+  <a class="desk" href="https://apps.apple.com/app/spotlit-pointer-highlighter/id6819035580"><img src="/icon.png" alt="Spotlit app icon"><span>Spotlit</span></a>
+  <h1 class="marquee">
+    <span class="ghost">Where’s<br>your<br>pointer?</span>
+    <span class="lit" aria-hidden="true">Where’s<br>your<br>pointer?</span>
+  </h1>
+  <div class="below">
+    <div>
+      <p class="lede">Spotlit puts a soft halo around your Mac’s pointer, so everyone can follow it in calls, recordings, lessons and live demos.</p>
+      <p class="try mouse-only">This page runs Spotlit. Move the mouse, click, or press a key.</p>
+      <p class="try touch-only">This page runs Spotlit. Drag a finger across it.</p>
+    </div>
+    <div class="get">
+      <a href="https://apps.apple.com/app/spotlit-pointer-highlighter/id6819035580"><img src="https://tools.applemarketingtools.com/api/badges/download-on-the-mac-app-store/black/en-us" alt="Download on the Mac App Store" width="165" height="46" onerror="this.outerHTML='<span class=badge-txt>Download on the Mac App Store</span>'"></a>
+      <p>Free to download.<br>PRO is a one-time $3.99.</p>
+    </div>
+  </div>
+</section>
+
+<div class="stagewrap">
+<div class="win">
+  <div class="tbar"><i></i><i></i><i></i>Spotlit Settings</div>
+  <div class="cols">
+    <nav class="side" aria-label="Sections">
+      <a href="#halo-pane"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" stroke-dasharray="3 2.4"/></svg>Halo</a>
+      <a href="#clicks"><svg viewBox="0 0 20 20"><path d="M5 15.5A7 7 0 1 1 15.6 6"/><path d="M9 8l7.5 2.6-3.2 1.1-1.1 3.2z"/></svg>Clicks</a>
+      <a href="#keystrokes"><svg viewBox="0 0 20 20"><rect x="2.5" y="5.5" width="15" height="9" rx="2"/><path d="M5.5 8.5h1M9 8.5h1M12.5 8.5h1M6.5 11.5h7"/></svg>Keystrokes</a>
+      <a href="#focus"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 0 0 14z" fill="currentColor"/></svg>Focus Dim</a>
+      <a href="#more"><svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5"/><path d="M12.3 12.3l4.5 4.5M8.5 6.5v4M6.5 8.5h4"/></svg>Magnifier and more</a>
+      <a href="#pro"><svg viewBox="0 0 20 20"><path d="M10 2.5l1.7 4.6 4.6 1.7-4.6 1.7L10 15.1l-1.7-4.6-4.6-1.7 4.6-1.7z"/><path d="M15.5 13.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/></svg>Spotlit PRO</a>
+      <a href="#about"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 9v5M10 6.3v.2"/></svg>About</a>
+    </nav>
+
+    <div class="panes">
+      <section class="pane" id="halo-pane">
+        <h2>Halo</h2>
+        <p>A soft shape that rides under your pointer. Change it here and watch the one on this page change with it.</p>
+        <div class="group">
+          <div class="r"><span>Shape</span><span class="seg"><button data-k="shape" data-v="circle">Circle</button><button data-k="shape" data-v="squircle">Squircle</button><button data-k="shape" data-v="rhombus">Rhombus</button></span></div>
+          <div class="r"><span>Style</span><span class="seg"><button data-k="style" data-v="fill">Fill</button><button data-k="style" data-v="ring">Ring</button></span></div>
+          <div class="r"><span>Size</span><input type="range" data-r="size" min="20" max="160" aria-label="Halo size"></div>
+          <div class="r"><span>Color</span><span class="dots">
+            <button data-k="color" data-v="#FFB020" style="--v:#FFB020" aria-label="Amber"></button>
+            <button data-k="color" data-v="#FF453A" style="--v:#FF453A" aria-label="Red"></button>
+            <button data-k="color" data-v="#FF2D92" style="--v:#FF2D92" aria-label="Pink"></button>
+            <button data-k="color" data-v="#34C759" style="--v:#34C759" aria-label="Green"></button>
+            <button data-k="color" data-v="#0A84FF" style="--v:#0A84FF" aria-label="Blue"></button>
+            <button data-k="color" data-v="#BF5AF2" style="--v:#BF5AF2" aria-label="Purple"></button>
+            <button data-k="color" data-v="#FFFFFF" style="--v:#FFFFFF" aria-label="White"></button>
+          </span></div>
+          <div class="r"><span class="grow">Shake to find<small>Lost the pointer on a big screen? Give the mouse a quick shake and the halo swells for a moment.<span class="mouse-only"> Try it.</span></small></span><span class="free">FREE</span></div>
+        </div>
+      </section>
+
+      <section class="pane" id="clicks">
+        <h2>Clicks</h2>
+        <p>A ripple marks every click, so people see what you pressed. Left and right clicks get their own colors.</p>
+        <div class="group">
+          <div class="r"><span>Show clicks</span><button class="sw" role="switch" data-t="clicks" aria-label="Show clicks"></button></div>
+          <div class="r"><span>Effect</span><span class="seg"><button data-k="effect" data-v="ripple">Ripple</button><button data-k="effect" data-v="pulse">Pulse<sup>PRO</sup></button><button data-k="effect" data-v="shrink">Shrink<sup>PRO</sup></button><button data-k="effect" data-v="glitter">Glitter<sup>PRO</sup></button></span></div>
+        </div>
+        <div class="spot" id="spot"><span><b>Click in here.</b>Right-click too. It gets blue.</span></div>
+      </section>
+
+      <section class="pane" id="keystrokes">
+        <h2>Keystrokes<span class="pro">PRO</span></h2>
+        <p>The keys you press show up at the bottom of the screen, so viewers can copy your shortcuts. Spotlit never saves or sends them.</p>
+        <div class="group">
+          <div class="r"><span>Show keystrokes</span><button class="sw" role="switch" data-t="keys" aria-label="Show keystrokes"></button></div>
+          <div class="r"><span>Show</span><span class="seg"><button data-k="keyMode" data-v="all">All keys</button><button data-k="keyMode" data-v="shortcuts">Shortcuts only</button></span></div>
+        </div>
+        <div class="keyview" id="keyview" aria-live="off"><span class="mouse-only">Press any key</span><span class="touch-only">Keystrokes need a keyboard. On a Mac they look like the keys below the halo.</span></div>
+        <p class="hint mouse-only">Try <kbd class="cap">⌃</kbd> <kbd class="cap">⌥</kbd> <kbd class="cap">S</kbd>. In the app it turns Spotlit off and on. It does the same here.</p>
+      </section>
+
+      <section class="pane" id="focus">
+        <h2>Focus Dim<span class="pro">PRO</span></h2>
+        <p>Everything goes dark except a pool of light around your pointer. Eyes go where you point.</p>
+        <div class="group">
+          <div class="r"><span>Focus Dim</span><button class="sw" role="switch" data-t="dim" aria-label="Focus Dim"></button></div>
+          <div class="r"><span>Dim amount</span><input type="range" data-r="dimAmt" min="0.2" max="0.85" step="0.01" aria-label="Dim amount"></div>
+          <div class="r"><span>Focus size</span><input type="range" data-r="dimSize" min="80" max="400" aria-label="Focus size"></div>
+          <div class="r mouse-only"><span class="grow">Hold to show<small>Hold <kbd class="cap">⌥</kbd> Option to dim only for a moment, then let go.</small></span></div>
+        </div>
+      </section>
+
+      <section class="pane cast" id="more">
+        <h2>Magnifier and more</h2>
+        <p>The rest of what is in the app. Your settings stay on your Mac.</p>
+        <div class="group">
+          <div class="r"><span><b>Magnifier</b><small>A lens that follows the pointer, from 1.5× to 6× zoom.</small></span><span class="pro">PRO</span></div>
+          <div class="r"><span><b>Presets</b><small>Save setups for demos, calls and lessons. Switch between them with a shortcut.</small></span><span class="pro">PRO</span></div>
+          <div class="r"><span><b>Settings per app</b><small>Spotlit turns on by itself in the apps you pick, and goes back when you leave.</small></span><span class="pro">PRO</span></div>
+          <div class="r"><span><b>Hold ⌥ to show</b><small>Effects appear only while you hold the Option key.</small></span><span class="pro">PRO</span></div>
+          <div class="r"><span><b>Gradients and custom colors</b><small>Sunset, aurora, ocean, candy, or any color you like.</small></span><span class="pro">PRO</span></div>
+          <div class="r"><span><b>Your own shortcuts</b><small>Set the keys for on and off, dim, magnifier and presets.</small></span><span class="pro">PRO</span></div>
+          <div class="r"><span><b>When to show</b><small>Always, while moving, on click or when the pointer goes idle.</small></span><span class="free">FREE</span></div>
+          <div class="r"><span><b>Keep it out of recordings</b><small>Hide the effects from screenshots and screen shares when you want a clean capture.</small></span><span class="free">FREE</span></div>
+          <div class="r"><span><b>Open at login</b><small>It sits in the menu bar from the moment your Mac starts.</small></span><span class="free">FREE</span></div>
+        </div>
+      </section>
+
+      <section class="pane" id="pro">
+        <h2>Spotlit PRO</h2>
+        <p>Spotlit is free. PRO unlocks everything on this page with one purchase. There is no subscription.</p>
+        <div class="plans">
+          <div class="plan">
+            <h3>Free</h3>
+            <div class="price">$0</div>
+            <ul><li>Halo in every shape, size and style</li><li>Click ripples</li><li>Shake to find</li><li>Keep it out of recordings</li></ul>
+          </div>
+          <div class="plan p">
+            <h3>PRO</h3>
+            <div class="price">$3.99<small>once</small></div>
+            <ul><li>Everything in Free</li><li>Focus Dim and the magnifier</li><li>Keystrokes on screen</li><li>Presets and settings per app</li><li>Pulse, shrink and glitter clicks</li><li>Gradients and custom colors</li></ul>
+          </div>
+        </div>
+        <div class="buy">
+          <a href="https://apps.apple.com/app/spotlit-pointer-highlighter/id6819035580"><img src="https://tools.applemarketingtools.com/api/badges/download-on-the-mac-app-store/black/en-us" alt="Download on the Mac App Store" width="165" height="46" onerror="this.outerHTML='<span class=badge-txt>Download on the Mac App Store</span>'"></a>
+          <p>Try every PRO feature free for 3 days inside the app. $3.99 is the US price; the App Store shows the price for your country.</p>
+        </div>
+      </section>
+
+      <section class="pane" id="about">
+        <h2>About</h2>
+        <div class="about">
+          <video src="/mascot.mp4" poster="/mascot.jpg" autoplay muted loop playsinline aria-label="The Spotlit mascot holding a small flashlight"></video>
+          <div>
+            <h3>Spotlit</h3>
+            <p class="ver">Version 1.0 for macOS 13 Ventura or later</p>
+            <p>Spotlit collects no data. There is no account and no tracking, and it works offline.</p>
+            <p>It asks for Input Monitoring only when you turn on keystrokes, and for Screen Recording only when you turn on the magnifier.</p>
+            <p>Made by Kshitij Koranne.</p>
+            <div class="links"><a href="/support">Support</a><a href="/privacy">Privacy policy</a><a href="mailto:kjrlabs9@gmail.com">kjrlabs9@gmail.com</a></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<section class="end">
+  <h2>Lights on.</h2>
+  <p>Give your pointer the spotlight on your next call.</p>
+  <div class="get">
+    <a href="https://apps.apple.com/app/spotlit-pointer-highlighter/id6819035580"><img src="https://tools.applemarketingtools.com/api/badges/download-on-the-mac-app-store/black/en-us" alt="Download on the Mac App Store" width="165" height="46" onerror="this.outerHTML='<span class=badge-txt>Download on the Mac App Store</span>'"></a>
+  </div>
+</section>
 </main>
+
+<footer>
+  <span>© 2026 Kshitij Koranne</span>
+  <nav><a href="/support">Support</a><a href="/privacy">Privacy</a><a href="mailto:kjrlabs9@gmail.com">Contact</a></nav>
+</footer>
+
+<script>
+// ponytail: one state object + one render(); no framework, no build step.
+const S={on:true,shape:'circle',style:'fill',size:64,color:'#FFB020',clicks:true,effect:'ripple',keys:true,keyMode:'all',dim:false,dimAmt:.6,dimSize:220};
+const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s),R=document.documentElement.style;
+const halo=$('#halo'),hero=$('#top'),mq=$('.marquee'),keysEl=$('#keys'),keyview=$('#keyview'),menu=$('#menu'),extra=$('#extra');
+const touch=matchMedia('(hover:none)').matches,still=matchMedia('(prefers-reduced-motion:reduce)').matches;
+document.body.classList.add(touch?'touch':'no-touch');
+let opt=false;
+
+function render(){
+  R.setProperty('--hc',S.color);R.setProperty('--hs',S.size+'px');R.setProperty('--da',S.dimAmt);R.setProperty('--dr',S.dimSize+'px');
+  halo.dataset.shape=S.shape;halo.dataset.style=S.style;halo.classList.toggle('off',!S.on||hidden);
+  document.body.classList.toggle('dimmed',S.on&&(S.dim||opt));
+  $$('[data-k]').forEach(b=>b.setAttribute('aria-pressed',S[b.dataset.k]==b.dataset.v));
+  $$('[data-t]').forEach(b=>b.setAttribute('aria-checked',!!S[b.dataset.t]));
+  $$('[data-r]').forEach(i=>{if(document.activeElement!==i)i.value=S[i.dataset.r]});
+  $('#status').textContent=S.on?'On, ⌃⌥S':'Off';
+}
+document.addEventListener('click',e=>{
+  const k=e.target.closest('[data-k]'),t=e.target.closest('[data-t]');
+  if(k)S[k.dataset.k]=k.dataset.v;
+  if(t)S[t.dataset.t]=!S[t.dataset.t];
+  if(k||t)render();
+  if(e.target.closest('#extra')){const o=menu.hidden;menu.hidden=!o;extra.setAttribute('aria-expanded',o)}
+  else if(!e.target.closest('#menu')||e.target.closest('.foot a')){menu.hidden=true;extra.setAttribute('aria-expanded',false)}
+});
+document.addEventListener('input',e=>{const r=e.target.dataset.r;if(r){S[r]=+e.target.value;render()}});
+
+// pointer: follow, wander until the first move, shake to find
+let x=innerWidth*.35,y=innerHeight*.45,moved=false,hidden=false,shakeUntil=0,lastSign=0,flips=[],px=null;
+function at(cx,cy){x=cx;y=cy;moved=true;if(hidden){hidden=false;render()}}
+addEventListener('pointermove',e=>{
+  at(e.clientX,e.clientY);
+  if(e.pointerType!=='mouse')return;
+  const now=performance.now(),dx=px==null?0:e.clientX-px;px=e.clientX;
+  if(Math.abs(dx)>6){const s=Math.sign(dx);if(s!==lastSign){flips.push(now);lastSign=s}}
+  flips=flips.filter(t=>now-t<650);
+  if(flips.length>=6){shakeUntil=now+900;flips=[]}
+},{passive:true});
+addEventListener('touchmove',e=>at(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
+document.addEventListener('mouseleave',()=>{hidden=true;render()});
+function tick(t){
+  if(!moved){const b=mq.getBoundingClientRect(),s=still?0:1;x=b.left+b.width*(.62+.3*s*Math.sin(t/1900));y=b.top+b.height*(.72+.22*s*Math.sin(t/1300))}
+  halo.style.transform=`translate3d(${x}px,${y}px,0)`;
+  halo.style.setProperty('--k',performance.now()<shakeUntil?2.6:1);
+  R.setProperty('--px',x+'px');R.setProperty('--py',y+'px');
+  const m=mq.getBoundingClientRect();if(m.bottom>-300){mq.style.setProperty('--lx',x-m.left+40+'px');mq.style.setProperty('--ly',y-m.top+40+'px')}
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// clicks
+const LEFT='#FFB020',RIGHT='#0A84FF';
+addEventListener('pointerdown',e=>{
+  if(!S.on||!S.clicks||e.target.closest('.menu,.mb'))return;
+  const f=document.createElement('div');f.className='fx '+S.effect;
+  f.style.left=e.clientX+'px';f.style.top=e.clientY+'px';f.style.setProperty('--c',e.button===2?RIGHT:LEFT);
+  if(S.effect==='glitter')for(let i=0;i<10;i++){const s=document.createElement('i');s.style.setProperty('--a',i*36+Math.random()*20+'deg');f.append(s)}
+  document.body.append(f);setTimeout(()=>f.remove(),800);
+});
+$('#spot').addEventListener('contextmenu',e=>e.preventDefault());
+
+// keys
+const NAMES={Enter:'↩',Backspace:'⌫',Tab:'⇥',Escape:'⎋',Space:'Space',ArrowLeft:'←',ArrowRight:'→',ArrowUp:'↑',ArrowDown:'↓',Delete:'⌦',CapsLock:'⇪'};
+let clearKeys;
+addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&!menu.hidden){menu.hidden=true;extra.setAttribute('aria-expanded',false)}
+  if(e.ctrlKey&&e.altKey&&e.code==='KeyS'){S.on=!S.on;e.preventDefault()}
+  if(e.key==='Alt'){opt=true;render()}
+  render();
+  if(!S.on||!S.keys)return;
+  const mod=e.ctrlKey||e.altKey||e.metaKey;
+  if(S.keyMode==='shortcuts'&&!mod)return;
+  const caps=[e.ctrlKey&&'⌃',e.altKey&&'⌥',e.shiftKey&&'⇧',e.metaKey&&'⌘'];
+  if(!['Control','Alt','Shift','Meta'].includes(e.key))caps.push(NAMES[e.code]||(e.code.startsWith('Key')?e.code.slice(3):e.code.startsWith('Digit')?e.code.slice(5):e.key.length===1?e.key.toUpperCase():e.key));
+  const html=caps.filter(Boolean).map(c=>`<span class="cap">${c.replace(/</g,'&lt;')}</span>`).join('');
+  keysEl.innerHTML=keyview.innerHTML=html;
+  clearTimeout(clearKeys);clearKeys=setTimeout(()=>keysEl.innerHTML='',1600);
+});
+addEventListener('keyup',e=>{if(e.key==='Alt'){opt=false;render()}});
+addEventListener('blur',()=>{opt=false;render()});
+
+// sidebar highlight
+const links=[...$$('.side a')];
+const io=new IntersectionObserver(es=>es.forEach(en=>{if(en.isIntersecting)links.forEach(a=>{a.classList.toggle('on',a.hash==='#'+en.target.id);if(a.hash==='#'+en.target.id&&touch)a.parentNode.scrollTo({left:a.offsetLeft-12,behavior:'smooth'})})}),{rootMargin:'-40% 0px -55% 0px'});
+$$('.pane').forEach(p=>io.observe(p));
+
+// menu-bar clock
+const clock=$('#clock');
+(function c(){clock.textContent=new Date().toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).replace(/,/g,'');setTimeout(c,15000)})();
+render();
+</script>
 </body>
 </html>
